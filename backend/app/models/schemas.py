@@ -30,6 +30,18 @@ class AudioAnalysisRequest(BaseModel):
     duration_seconds: float | None = None
 
 
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    phone: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    username: str  # can be Name or Email
+    password: str
+
+
 class RiskResult(BaseModel):
     score: float
     label: str

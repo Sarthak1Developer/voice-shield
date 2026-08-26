@@ -1,113 +1,191 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Phone, User, Wifi, WifiOff } from 'lucide-react';
-import { checkHealth } from '../services/api';
+import { Play, ArrowRight, CheckCircle2, AlertTriangle, ShieldCheck, Check } from 'lucide-react';
 import './Dashboard.css';
-
-const CONTACTS = [
-  { id: '1', name: 'Amit', initial: 'A', status: 'Trusted' },
-  { id: '2', name: 'Rahul', initial: 'R', status: 'Trusted' },
-  { id: '3', name: 'Priya', initial: 'P', status: 'Trusted' },
-];
 
 function Dashboard() {
   const navigate = useNavigate();
-  const [backendOnline, setBackendOnline] = useState(null);
 
-  useEffect(() => {
-    let active = true;
-    async function verifyHealth() {
-      const isOnline = await checkHealth();
-      if (active) {
-        setBackendOnline(isOnline);
-      }
-    }
-    verifyHealth();
-    
-    // Poll health status every 5 seconds
-    const interval = setInterval(verifyHealth, 5000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  const handleCall = (contactName) => {
-    navigate(`/calls?contact=${encodeURIComponent(contactName)}`);
+  const handleStartCall = () => {
+    navigate('/calls');
   };
 
+  const handleViewAllHistory = () => {
+    navigate('/history');
+  };
+
+  const recentCalls = [
+    {
+      name: 'Rahul Kumar',
+      initials: 'RK',
+      time: 'Today, 16:42',
+      phone: '+91 98••• ••421',
+      badgeClass: 'safe',
+      badgeText: 'Safe'
+    },
+    {
+      name: 'Unknown caller',
+      initials: 'Uc',
+      time: 'Today, 14:18',
+      phone: '+91 70••• ••903',
+      badgeClass: 'blocked',
+      badgeText: 'Blocked'
+    },
+    {
+      name: 'Priya Sharma',
+      initials: 'PS',
+      time: 'Yesterday, 19:06',
+      phone: '+91 88••• ••117',
+      badgeClass: 'safe',
+      badgeText: 'Safe'
+    },
+    {
+      name: 'Bank Support',
+      initials: 'BS',
+      time: 'Yesterday, 11:31',
+      phone: '+91 80••• ••221',
+      badgeClass: 'warned',
+      badgeText: 'Warned'
+    }
+  ];
+
+  const riskSignals = [
+    {
+      title: 'Voice consistency',
+      desc: 'Speaker embedding matches expected profile',
+      score: '98%',
+      status: 'success'
+    },
+    {
+      title: 'Synthetic speech artifacts',
+      desc: 'Minor spectral irregularities detected',
+      score: '22%',
+      status: 'warning'
+    },
+    {
+      title: 'Social engineering',
+      desc: 'No urgent-transfer language detected',
+      score: 'LOW',
+      status: 'success'
+    }
+  ];
+
   return (
-    <section className="dashboard-page-container">
-      {/* Top Banner for Backend Status */}
-      <div className="status-banner">
-        {backendOnline === true ? (
-          <div className="health-badge online">
-            <Wifi className="badge-icon pulse" size={16} />
-            <span>VoiceShield Backend Online</span>
-          </div>
-        ) : backendOnline === false ? (
-          <div className="health-badge offline">
-            <WifiOff className="badge-icon" size={16} />
-            <span>VoiceShield Backend Offline</span>
-          </div>
-        ) : (
-          <div className="health-badge checking">
-            <div className="spinner-dot" />
-            <span>Connecting to backend...</span>
-          </div>
-        )}
-      </div>
-
-      <div className="dashboard-welcome">
-        <h1 className="welcome-title">Welcome back</h1>
-        <p className="welcome-subtitle">Stay protected against voice spoofing and deepfakes.</p>
-      </div>
-
-      {/* Stats Cards Section */}
-      <div className="stats-row">
-        <div className="stat-card">
-          <div className="stat-value">12 Calls</div>
-          <div className="stat-label">Total Monitored</div>
+    <section className="dashboard-container">
+      {/* Top Threat Shield Banner */}
+      <div className="threat-shield-banner">
+        <div className="banner-left">
+          <span className="banner-eyebrow">THREAT SHIELD</span>
+          <h2 className="banner-heading">Your voice is protected.</h2>
+          <p className="banner-subheading">
+            VoiceShield monitors calls for AI-generated speech, impersonation patterns, and social-engineering signals.
+          </p>
+          <button className="start-call-action-btn" onClick={handleStartCall}>
+            <Play size={14} fill="currentColor" />
+            <span>Start protected call</span>
+          </button>
         </div>
-        <div className="stat-card alert-card">
-          <div className="stat-value">2 Alerts</div>
-          <div className="stat-label">Flagged Issues</div>
-        </div>
-        <div className="stat-card risk-card">
-          <div className="stat-value">Risk: Low</div>
-          <div className="stat-label">System Health</div>
+        <div className="banner-right">
+          <div className="glowing-circle-outer">
+            <div className="glowing-circle-inner">
+              <Check size={42} strokeWidth={3} className="glowing-check-icon" />
+            </div>
+            <div className="ring-pulse pulse-1" />
+            <div className="ring-pulse pulse-2" />
+          </div>
         </div>
       </div>
 
-      {/* Contacts List Section */}
-      <div className="contacts-section">
-        <div className="contacts-header">
-          <h2>Contacts</h2>
+      {/* Stats row */}
+      <div className="stats-row-grid">
+        <div className="stat-item-card">
+          <span className="stat-label">Calls scanned</span>
+          <strong className="stat-value">128</strong>
+          <span className="stat-subtext">+12 this week</span>
         </div>
         
-        <div className="contacts-list">
-          {CONTACTS.map((contact) => (
-            <div key={contact.id} className="contact-row">
-              <div className="contact-info">
-                <div className="contact-avatar">
-                  <User size={18} className="avatar-icon" />
-                </div>
-                <div className="contact-details">
-                  <span className="contact-name">{contact.name}</span>
-                  <span className="contact-trust">{contact.status}</span>
-                </div>
-              </div>
-              
-              <button 
-                type="button" 
-                className="call-action-button" 
-                onClick={() => handleCall(contact.name)}
-              >
-                <Phone size={14} className="phone-icon-button" />
-                <span>Call</span>
-              </button>
+        <div className="stat-item-card">
+          <span className="stat-label">Threats blocked</span>
+          <strong className="stat-value">7</strong>
+          <span className="stat-subtext danger-text">2 high-risk today</span>
+        </div>
+        
+        <div className="stat-item-card">
+          <span className="stat-label">Avg. confidence</span>
+          <strong className="stat-value">94.8%</strong>
+          <span className="stat-subtext">Detection engine</span>
+        </div>
+        
+        <div className="stat-item-card">
+          <span className="stat-label">Protection</span>
+          <strong className="stat-value success-text">ON</strong>
+          <span className="stat-subtext">Microphone guarded</span>
+        </div>
+      </div>
+
+      {/* Bottom Columns */}
+      <div className="dashboard-content-columns">
+        {/* Left Column: Recent Activity */}
+        <div className="activity-panel">
+          <div className="panel-header-row">
+            <div className="panel-header-title-group">
+              <span className="panel-sub">RECENT ACTIVITY</span>
+              <h3 className="panel-main">Latest calls</h3>
             </div>
-          ))}
+            <button className="view-all-btn" onClick={handleViewAllHistory}>
+              <span>View all</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+
+          <div className="calls-list">
+            {recentCalls.map((call, idx) => (
+              <div key={idx} className="call-list-item">
+                <div className="call-avatar">
+                  {call.initials}
+                </div>
+                <div className="call-item-details">
+                  <span className="call-user-name">{call.name}</span>
+                  <span className="call-user-meta">{call.time} • {call.phone}</span>
+                </div>
+                <span className={`badge ${call.badgeClass}`}>
+                  {call.badgeText}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Column: Risk Engine Signals */}
+        <div className="signals-panel">
+          <div className="panel-header-row">
+            <div className="panel-header-title-group">
+              <span className="panel-sub">RISK ENGINE</span>
+              <h3 className="panel-main">Current signals</h3>
+            </div>
+            <span className="live-pill">LIVE</span>
+          </div>
+
+          <div className="signals-list">
+            {riskSignals.map((sig, idx) => (
+              <div key={idx} className="signal-item">
+                <div className={`signal-icon-container ${sig.status}`}>
+                  {sig.status === 'success' ? (
+                    <CheckCircle2 size={16} />
+                  ) : (
+                    <AlertTriangle size={16} />
+                  )}
+                </div>
+                <div className="signal-details">
+                  <span className="signal-title">{sig.title}</span>
+                  <span className="signal-desc">{sig.desc}</span>
+                </div>
+                <span className={`signal-score ${sig.status}`}>
+                  {sig.score}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

@@ -75,9 +75,45 @@ export async function uploadAudioFile(file) {
   }
 }
 
+/**
+ * Registers a new user.
+ */
+export async function registerUser(name, email, phone, password) {
+  try {
+    const response = await client.post('/api/auth/register', {
+      name,
+      email,
+      phone,
+      password,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Registration failed:', error.response?.data?.detail || error.message);
+    throw new Error(error.response?.data?.detail || 'Registration failed');
+  }
+}
+
+/**
+ * Logins a user using name or email, and password.
+ */
+export async function loginUser(username, password) {
+  try {
+    const response = await client.post('/api/auth/login', {
+      username,
+      password,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Login failed:', error.response?.data?.detail || error.message);
+    throw new Error(error.response?.data?.detail || 'Login failed');
+  }
+}
+
 export default {
   checkHealth,
   createCall,
   analyzeCall,
   uploadAudioFile,
+  registerUser,
+  loginUser,
 };
