@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import analysis, auth, calls, users
 
@@ -6,6 +7,14 @@ app = FastAPI(
     title="VoiceShield API",
     version="0.1.0",
     description="Audio-based risk analysis service for call monitoring.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])

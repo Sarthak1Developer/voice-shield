@@ -1,0 +1,254 @@
+.dashboard-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2.5rem;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+}
+
+.status-banner {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -1rem;
+}
+
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.health-badge.online {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.health-badge.offline {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.health-badge.checking {
+  background-color: rgba(107, 114, 128, 0.1);
+  color: #4b5563;
+  border: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.badge-icon.pulse {
+  animation: pulse-dot 2s infinite;
+}
+
+.spinner-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #4b5563;
+  border-radius: 50%;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+}
+
+.dashboard-welcome {
+  text-align: left;
+}
+
+.welcome-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #1e1b4b;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.03em;
+}
+
+.welcome-subtitle {
+  font-size: 1.05rem;
+  color: #6b7280;
+}
+
+/* Stats cards styling, similar to mock cards */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+  width: 100%;
+}
+
+.stat-card {
+  background: #ffffff;
+  border: 1px solid rgba(229, 231, 235, 0.8);
+  border-radius: 16px;
+  padding: 1.5rem;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  border-color: rgba(170, 59, 255, 0.2);
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1e1b4b;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-card.alert-card:hover {
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.stat-card.alert-card .stat-value {
+  color: #dc2626;
+}
+
+.stat-card.risk-card .stat-value {
+  color: #059669;
+}
+
+/* Contacts styling */
+.contacts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  text-align: left;
+}
+
+.contacts-header h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1e1b4b;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.contacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: #ffffff;
+  border: 1px solid rgba(229, 231, 235, 0.8);
+  border-radius: 14px;
+  transition: all 0.2s ease;
+}
+
+.contact-row:hover {
+  background: rgba(249, 250, 251, 0.8);
+  border-color: rgba(229, 231, 235, 1);
+}
+
+.contact-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.contact-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background-color: rgba(170, 59, 255, 0.08);
+  border-radius: 50%;
+  color: #aa3bff;
+}
+
+.contact-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.contact-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.contact-trust {
+  font-size: 0.8rem;
+  color: #10b981;
+  font-weight: 500;
+}
+
+.call-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.1rem;
+  background-color: #aa3bff;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.call-action-button:hover {
+  background-color: #9322e6;
+  transform: scale(1.02);
+}
+
+.phone-icon-button {
+  margin-top: 1px;
+}
+
+@media (max-width: 640px) {
+  .dashboard-page-container {
+    padding: 1.5rem;
+  }
+  .stats-row {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .welcome-title {
+    font-size: 1.75rem;
+  }
+}
