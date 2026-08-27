@@ -46,3 +46,13 @@ create table if not exists alerts (
     recommendation text,
     created_at timestamptz not null default now()
 );
+
+-- Row-Level Security (RLS) configuration for prototype testing.
+-- To allow the backend to read and write using the anonymous client key, 
+-- you can run these commands in your Supabase SQL Editor:
+-- 
+-- ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE calls DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE speaker_profiles DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE call_analysis DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE alerts DISABLE ROW LEVEL SECURITY;

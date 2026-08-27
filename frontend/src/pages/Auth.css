@@ -166,3 +166,24 @@
 .auth-link:hover {
   text-decoration: underline;
 }
+
+/* Phone input with country code selector */
+.phone-input-container {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.country-code-select {
+  width: 115px;
+  cursor: pointer;
+}
+
+.country-code-select option {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.phone-number-input {
+  flex: 1;
+}

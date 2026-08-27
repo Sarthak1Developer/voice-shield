@@ -1,11 +1,17 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from uuid import uuid4
+import hashlib
 
 from app.models.schemas import RegisterRequest, LoginRequest
 from app.services.repository import _client, insert, find_by
 
 router = APIRouter()
+
+
+def hash_password(password: str) -> str:
+    """Hash password using SHA-256 for local fallback mock storage."""
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 @router.post("/register")
@@ -61,6 +67,10 @@ async def register(req: RegisterRequest):
         "phone": req.phone,
         "role": "user"
     }
+    
+    # Save the password hash for local auth fallback if client is not configured
+    if not supabase_success:
+        profile_data["password_hash"] = hash_password(req.password)
     
     try:
         saved_profile = insert("profiles", profile_data)
@@ -128,6 +138,14 @@ async def login(req: LoginRequest):
             )
     else:
         # Local fallback login
+        # Check password hash if stored
+        stored_hash = profile.get("password_hash")
+        if stored_hash and stored_hash != hash_password(password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid username or password"
+            )
+
         return {
             "message": "Login successful (local mock)",
             "access_token": f"mock-jwt-token-{profile['id']}",

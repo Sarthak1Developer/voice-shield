@@ -6,7 +6,8 @@ import './Auth.css';
 function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+91');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -14,7 +15,7 @@ function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !email || !phone || !password) {
+    if (!name || !email || !phoneNumber || !password) {
       setError('Please fill in all fields.');
       return;
     }
@@ -22,11 +23,12 @@ function Register() {
     setSuccess('');
     setLoading(true);
     try {
+      const phone = `${countryCode} ${phoneNumber.trim()}`;
       await registerUser(name, email, phone, password);
-      setSuccess('Account created successfully! Verification email sent by Supabase. Please verify your email before signing in.');
+      setSuccess('Account created successfully! You can now sign in.');
       setName('');
       setEmail('');
-      setPhone('');
+      setPhoneNumber('');
       setPassword('');
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -78,14 +80,35 @@ function Register() {
 
           <div className="form-group">
             <label className="form-label">Mobile Number</label>
-            <input 
-              type="tel" 
-              className="form-input"
-              placeholder="+91 99999 99999" 
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={loading}
-            />
+            <div className="phone-input-container">
+              <select 
+                className="form-input country-code-select"
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value)}
+                disabled={loading}
+              >
+                <option value="+91">🇮🇳 +91</option>
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+44">🇬🇧 +44</option>
+                <option value="+61">🇦🇺 +61</option>
+                <option value="+49">🇩🇪 +49</option>
+                <option value="+33">🇫🇷 +33</option>
+                <option value="+971">🇦🇪 +971</option>
+                <option value="+966">🇸🇦 +966</option>
+                <option value="+65">🇸🇬 +65</option>
+                <option value="+81">🇯🇵 +81</option>
+                <option value="+86">🇨🇳 +86</option>
+                <option value="+7">🇷🇺 +7</option>
+              </select>
+              <input 
+                type="tel" 
+                className="form-input phone-number-input"
+                placeholder="99999 99999" 
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                disabled={loading}
+              />
+            </div>
           </div>
 
           <div className="form-group">

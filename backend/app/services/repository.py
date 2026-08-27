@@ -19,9 +19,16 @@ _memory: dict[str, list[dict]] = {
 
 
 def _client() -> Client | None:
-    if not settings.supabase_url or not settings.supabase_key or create_client is None:
+    url = settings.supabase_url
+    key = settings.supabase_key or settings.supabase_anon_key
+    if not url or not key or create_client is None:
         return None
-    return create_client(settings.supabase_url, settings.supabase_key)
+    # Sanitize URL if it contains REST API path suffix
+    if url.endswith("/rest/v1/"):
+        url = url[:-9]
+    elif url.endswith("/rest/v1"):
+        url = url[:-8]
+    return create_client(url, key)
 
 
 def insert(table: str, values: dict) -> dict:

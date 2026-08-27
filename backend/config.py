@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     secret_key: str = "changeme"
     supabase_url: str | None = None
     supabase_key: str | None = None
+    supabase_anon_key: str | None = None
 
     class Config:
         env_file = ".env"
