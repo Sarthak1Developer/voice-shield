@@ -88,8 +88,21 @@ export async function registerUser(name, email, phone, password) {
     });
     return response.data;
   } catch (error) {
-    console.error('Registration failed:', error.response?.data?.detail || error.message);
-    throw new Error(error.response?.data?.detail || 'Registration failed');
+    let errMsg = 'Registration failed';
+    if (error.response?.data?.detail) {
+      const detail = error.response.data.detail;
+      if (typeof detail === 'string') {
+        errMsg = detail;
+      } else if (Array.isArray(detail)) {
+        errMsg = detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join(', ');
+      } else {
+        errMsg = JSON.stringify(detail);
+      }
+    } else if (error.message) {
+      errMsg = error.message;
+    }
+    console.error('Registration failed:', errMsg);
+    throw new Error(errMsg);
   }
 }
 
@@ -104,8 +117,21 @@ export async function loginUser(username, password) {
     });
     return response.data;
   } catch (error) {
-    console.error('Login failed:', error.response?.data?.detail || error.message);
-    throw new Error(error.response?.data?.detail || 'Login failed');
+    let errMsg = 'Login failed';
+    if (error.response?.data?.detail) {
+      const detail = error.response.data.detail;
+      if (typeof detail === 'string') {
+        errMsg = detail;
+      } else if (Array.isArray(detail)) {
+        errMsg = detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join(', ');
+      } else {
+        errMsg = JSON.stringify(detail);
+      }
+    } else if (error.message) {
+      errMsg = error.message;
+    }
+    console.error('Login failed:', errMsg);
+    throw new Error(errMsg);
   }
 }
 
