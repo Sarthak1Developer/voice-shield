@@ -51,6 +51,7 @@ function Call({ currentUser }) {
   const remoteAudioRef = useRef(null);
   const timerRef = useRef(null);
   const fluctuationRef = useRef(null);
+  const iceCandidatesQueueRef = useRef([]);
 
   const myPhone = currentUser?.phone || '+91 99999 99999';
   const myName = currentUser?.name || 'Anonymous';
@@ -105,7 +106,7 @@ function Call({ currentUser }) {
           } else if (data.status === 'accepted') {
             setCallState('connected');
             setCalleeName(getContactNameByPhone(data.from_phone));
-            await startWebRTC(data.from_phone, true); // We are caller, trigger offer
+            await startCallerWebRTC(data.from_phone);
           } else if (data.status === 'declined') {
             resetCallState();
           } else if (data.status === 'ended') {
@@ -120,16 +121,27 @@ function Call({ currentUser }) {
 
         case 'webrtc_answer':
           if (pcRef.current) {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+            try {
+              await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+              await processQueuedCandidates();
+            } catch (err) {
+              console.error('Error setting remote description or processing queued candidates:', err);
+            }
           }
           break;
 
         case 'ice_candidate':
-          if (pcRef.current && data.candidate) {
-            try {
-              await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (err) {
-              console.error('Error adding ICE candidate:', err);
+          if (data.candidate) {
+            const pc = pcRef.current;
+            if (pc && pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+              } catch (err) {
+                console.error('Error adding ICE candidate:', err);
+              }
+            } else {
+              iceCandidatesQueueRef.current.push(data.candidate);
+              console.log('Queued ICE candidate (remote description not set yet)');
             }
           }
           break;
@@ -147,17 +159,6 @@ function Call({ currentUser }) {
       cleanupWebRTC();
     };
   }, [myPhone]);
-
-  // Audio stream setup
-  useEffect(() => {
-    // Create remote audio element dynamically
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
-    remoteAudioRef.current = audio;
-    return () => {
-      audio.pause();
-    };
-  }, []);
 
   // Update callee details if initial phone parameter is loaded
   useEffect(() => {
@@ -266,7 +267,7 @@ function Call({ currentUser }) {
       }));
     }
 
-    await startWebRTC(incomingCallData.from_phone, false); // We are answerer, wait for offer
+    await startCalleeWebRTC(incomingCallData.from_phone); // We are answerer, wait for offer
   };
 
   // Decline call
@@ -338,85 +339,99 @@ function Call({ currentUser }) {
   };
 
   // WebRTC logic
-  const startWebRTC = async (peerPhone, isCaller) => {
+  const initializePeerConnection = async (peerPhone) => {
     cleanupWebRTC();
 
-    try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
-      pcRef.current = pc;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = false;
+    }
 
-      // Capture Microphone
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = localStream;
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
+    });
+    pcRef.current = pc;
 
-      // ICE Candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
-            type: 'ice_candidate',
-            candidate: event.candidate,
-            to_phone: peerPhone
-          }));
-        }
-      };
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE Connection State:', pc.iceConnectionState);
+    };
+    pc.onconnectionstatechange = () => {
+      console.log('Connection State:', pc.connectionState);
+    };
 
-      // Remote streams
-      pc.ontrack = (event) => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = event.streams[0];
-          remoteAudioRef.current.play().catch(err => console.log('Audio autoplay blocked:', err));
-        }
-      };
+    // Capture Microphone
+    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    localStreamRef.current = localStream;
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+    // ICE Candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
-          type: 'webrtc_offer',
-          offer: offer,
+          type: 'ice_candidate',
+          candidate: event.candidate,
           to_phone: peerPhone
         }));
       }
+    };
+
+    // Remote streams
+    pc.ontrack = (event) => {
+      console.log('Received remote track:', event.track);
+      if (remoteAudioRef.current) {
+        if (event.streams && event.streams[0]) {
+          remoteAudioRef.current.srcObject = event.streams[0];
+        } else {
+          if (!remoteAudioRef.current.srcObject) {
+            remoteAudioRef.current.srcObject = new MediaStream();
+          }
+          remoteAudioRef.current.srcObject.addTrack(event.track);
+        }
+        remoteAudioRef.current.play().catch(err => console.log('Audio autoplay blocked or failed:', err));
+      }
+    };
+
+    return pc;
+  };
+
+  const startCallerWebRTC = async (peerPhone) => {
+    try {
+      const pc = await initializePeerConnection(peerPhone);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      wsRef.current.send(JSON.stringify({
+        type: 'webrtc_offer',
+        offer: offer,
+        to_phone: peerPhone
+      }));
     } catch (err) {
-      console.error('WebRTC initialization failed:', err);
+      console.error('Caller WebRTC setup failed:', err);
+    }
+  };
+
+  const startCalleeWebRTC = async (peerPhone) => {
+    try {
+      await initializePeerConnection(peerPhone);
+    } catch (err) {
+      console.error('Callee WebRTC setup failed:', err);
     }
   };
 
   const handleWebRTCOffer = async (offer, peerPhone) => {
     try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
-      pcRef.current = pc;
-
-      // Capture Mic
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = localStream;
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-      // Candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
-            type: 'ice_candidate',
-            candidate: event.candidate,
-            to_phone: peerPhone
-          }));
-        }
-      };
-
-      // Remote track
-      pc.ontrack = (event) => {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = event.streams[0];
-          remoteAudioRef.current.play().catch(err => console.log('Audio play failed:', err));
-        }
-      };
+      let pc = pcRef.current;
+      if (!pc) {
+        pc = await initializePeerConnection(peerPhone);
+      }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await processQueuedCandidates();
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -432,6 +447,22 @@ function Call({ currentUser }) {
     }
   };
 
+  const processQueuedCandidates = async () => {
+    const pc = pcRef.current;
+    if (!pc) return;
+
+    const queue = iceCandidatesQueueRef.current;
+    console.log(`Processing ${queue.length} queued ICE candidates`);
+    for (const candidate of queue) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error('Error adding queued ICE candidate:', err);
+      }
+    }
+    iceCandidatesQueueRef.current = [];
+  };
+
   const cleanupWebRTC = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -444,6 +475,7 @@ function Call({ currentUser }) {
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null;
     }
+    iceCandidatesQueueRef.current = [];
   };
 
   const startDemoCall = () => {
@@ -524,6 +556,7 @@ function Call({ currentUser }) {
 
   return (
     <section className="call-page-container">
+      <audio ref={remoteAudioRef} autoPlay style={{ display: 'none' }} />
       {/* Navigation tabs */}
       <div className="tabs-header">
         <button 
