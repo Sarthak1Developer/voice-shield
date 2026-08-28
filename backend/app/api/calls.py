@@ -63,6 +63,21 @@ class CallSignalingManager:
         if phone in self.active_sockets:
             del self.active_sockets[phone]
 
+    def find_socket(self, target_phone: str) -> tuple[str | None, WebSocket | None]:
+        target_digits = "".join(c for c in target_phone if c.isdigit())
+        if not target_digits:
+            return None, None
+            
+        for phone, socket in self.active_sockets.items():
+            phone_digits = "".join(c for c in phone if c.isdigit())
+            if phone_digits == target_digits:
+                return phone, socket
+            # If target has at least 10 digits and registered phone has at least 10, match suffixes (last 10 digits)
+            if len(phone_digits) >= 10 and len(target_digits) >= 10:
+                if phone_digits[-10:] == target_digits[-10:]:
+                    return phone, socket
+        return None, None
+
     async def send_message(self, message: dict, to_phone: str):
         socket = self.active_sockets.get(to_phone)
         if socket:
@@ -81,10 +96,12 @@ async def websocket_endpoint(websocket: WebSocket, phone: str):
             target_phone = data.get("to_phone")
             
             if target_phone:
+                actual_target, target_socket = signaling_manager.find_socket(target_phone)
                 data["from_phone"] = phone
+                
                 if msg_type == "call_initiate":
                     # Check if target is online
-                    if target_phone not in signaling_manager.active_sockets:
+                    if not target_socket:
                         await websocket.send_json({
                             "type": "call_status",
                             "status": "offline",
@@ -92,7 +109,9 @@ async def websocket_endpoint(websocket: WebSocket, phone: str):
                         })
                         continue
                 
-                await signaling_manager.send_message(data, target_phone)
+                if target_socket:
+                    data["to_phone"] = actual_target
+                    await target_socket.send_json(data)
     except WebSocketDisconnect:
         pass
     except Exception:

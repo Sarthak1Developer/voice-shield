@@ -55,6 +55,18 @@ function Call({ currentUser }) {
   const myPhone = currentUser?.phone || '+91 99999 99999';
   const myName = currentUser?.name || 'Anonymous';
 
+  // Refs to track states inside WebSocket subscription without tearing it down on state changes
+  const callStateRef = useRef(callState);
+  const isIncomingCallRef = useRef(isIncomingCall);
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
+  useEffect(() => {
+    isIncomingCallRef.current = isIncomingCall;
+  }, [isIncomingCall]);
+
   // WebSocket signaling setup
   useEffect(() => {
     // Connect to WebSocket signaling server
@@ -71,7 +83,7 @@ function Call({ currentUser }) {
       switch (data.type) {
         case 'call_initiate':
           // Only receive if idle
-          if (callState === 'idle' && !isIncomingCall) {
+          if (callStateRef.current === 'idle' && !isIncomingCallRef.current) {
             setIncomingCallData(data);
             setIsIncomingCall(true);
           } else {
@@ -134,7 +146,7 @@ function Call({ currentUser }) {
       if (wsRef.current) wsRef.current.close();
       cleanupWebRTC();
     };
-  }, [myPhone, callState, isIncomingCall]);
+  }, [myPhone]);
 
   // Audio stream setup
   useEffect(() => {
