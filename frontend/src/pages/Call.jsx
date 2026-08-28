@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Phone, PhoneOff, UploadCloud, ShieldAlert, CheckCircle, AlertTriangle, RefreshCw, BarChart2, Delete, Volume2, VolumeX, Shield, Play } from 'lucide-react';
-import { uploadAudioFile } from '../services/api';
+import { uploadAudioFile, API_BASE } from '../services/api';
 import './Call.css';
 
 const INITIAL_DIRECTORY = [
@@ -59,7 +59,8 @@ function Call({ currentUser }) {
   useEffect(() => {
     // Connect to WebSocket signaling server
     const cleanPhone = encodeURIComponent(myPhone);
-    const wsUrl = `ws://localhost:8000/api/calls/ws/${cleanPhone}`;
+    const wsBase = API_BASE.replace(/^http/, 'ws');
+    const wsUrl = `${wsBase}/api/calls/ws/${cleanPhone}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
