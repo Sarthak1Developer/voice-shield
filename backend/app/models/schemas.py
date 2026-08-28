@@ -45,3 +45,15 @@ class LoginRequest(BaseModel):
 class RiskResult(BaseModel):
     score: float
     label: str
+
+
+class UserUpdate(BaseModel):
+    name: str
+    email: str
+    phone: str | None = None
+
+
+class ContactCreate(BaseModel):
+    name: str
+    phone: str
+    relation: str | None = "Family"

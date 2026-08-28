@@ -1,23 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Phone, PhoneOff, UploadCloud, ShieldAlert, CheckCircle, AlertTriangle, RefreshCw, BarChart2, Delete, Volume2, VolumeX, Shield, Play } from 'lucide-react';
-import { uploadAudioFile, API_BASE } from '../services/api';
+import api, { uploadAudioFile, API_BASE } from '../services/api';
 import './Call.css';
 
-const INITIAL_DIRECTORY = [
-  { name: 'Rahul Kumar', relation: 'Family', phone: '+91 98765 43210' },
-  { name: 'Priya Sharma', relation: 'Family', phone: '+91 88888 11117' },
-  { name: 'Aman Verma', relation: 'Friend', phone: '+91 99999 55504' },
-  { name: 'Dr. Mehta', relation: 'Doctor', phone: '+91 98111 22233' },
-  { name: 'Neha Singh', relation: 'Work', phone: '+91 98777 66655' },
-  { name: 'Mom', relation: 'Family', phone: '+91 98000 11122' },
-  { name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
-];
-
-function Call({ currentUser }) {
+function Call({ currentUser, onAddAlert }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const initialPhone = searchParams.get('phone') || '';
+
+  // Dynamic Directory state
+  const [directory, setDirectory] = useState([
+    { name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
+  ]);
 
   // Tab states: 'live' or 'upload'
   const [activeTab, setActiveTab] = useState('live');
@@ -160,13 +155,63 @@ function Call({ currentUser }) {
     };
   }, [myPhone]);
 
+  // Load dynamic contacts for current user
+  useEffect(() => {
+    if (currentUser) {
+      api.getContacts(currentUser.id)
+        .then(data => {
+          const list = [
+            ...data,
+            { id: 'echo', name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
+          ];
+          setDirectory(list);
+        })
+        .catch(err => {
+          console.warn('Failed to load dynamic contacts, using local storage cache fallback:', err);
+          const cached = localStorage.getItem(`voiceshield_contacts_${currentUser.id}`);
+          if (cached) {
+            setDirectory([
+              ...JSON.parse(cached),
+              { id: 'echo', name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
+            ]);
+          } else {
+            setDirectory([
+              { id: 'echo', name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
+            ]);
+          }
+        });
+    }
+  }, [currentUser]);
+
+  // Alert trigger if riskScore crosses 35 during an active call
+  const alertTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (callState !== 'connected') {
+      alertTriggeredRef.current = false;
+      return;
+    }
+    
+    if (riskScore > 35 && !alertTriggeredRef.current) {
+      alertTriggeredRef.current = true;
+      if (onAddAlert) {
+        onAddAlert({
+          severity: 'HIGH',
+          message: `Elevated call risk detected: ${riskScore}% spoofing markers in call with ${calleeName || typedNumber}.`,
+          recommendation: 'Review credentials, do not share OTPs, and verify caller identity.'
+        });
+      }
+    }
+  }, [riskScore, callState, calleeName, typedNumber, onAddAlert]);
+
   // Update callee details if initial phone parameter is loaded
   useEffect(() => {
     if (initialPhone) {
       setTypedNumber(initialPhone);
-      setCalleeName(getContactNameByPhone(initialPhone));
+      // Wait for directory to be loaded or resolve using directory helper
+      const contact = directory.find(c => c.phone === initialPhone);
+      setCalleeName(contact ? contact.name : `+91 ${initialPhone.replace(/[^\d]/g, '').slice(-10)}`);
     }
-  }, [initialPhone]);
+  }, [initialPhone, directory]);
 
   // Active call timers & features fluctuations
   useEffect(() => {
@@ -203,7 +248,7 @@ function Call({ currentUser }) {
   }, [callState]);
 
   const getContactNameByPhone = (phone) => {
-    const contact = INITIAL_DIRECTORY.find(c => c.phone === phone);
+    const contact = directory.find(c => c.phone === phone);
     return contact ? contact.name : `+91 ${phone.replace(/[^\d]/g, '').slice(-10)}`;
   };
 
@@ -539,15 +584,30 @@ function Call({ currentUser }) {
     try {
       const result = await uploadAudioFile(file);
       setAnalysisResult(result);
+      if (result.risk_score > 35 && onAddAlert) {
+        onAddAlert({
+          severity: result.severity || 'HIGH',
+          message: `Audio verification warning: File upload "${file.name}" returned a risk score of ${result.risk_score}%.`,
+          recommendation: result.severity === 'HIGH' ? 'High spoofing probability. Do not authenticate or trust.' : 'Suspicious acoustic pattern detected.'
+        });
+      }
     } catch (err) {
       console.error('File upload analysis failed, falling back to mock:', err);
       setTimeout(() => {
-        setAnalysisResult({
+        const mockResult = {
           deepfake_score: 0.78,
           speaker_similarity: 0.64,
           risk_score: 82,
           severity: 'HIGH',
-        });
+        };
+        setAnalysisResult(mockResult);
+        if (onAddAlert) {
+          onAddAlert({
+            severity: 'HIGH',
+            message: `Audio verification warning: File upload "${file.name}" analyzed with mock risk score of 82%.`,
+            recommendation: 'High spoofing probability. Do not authenticate or trust.'
+          });
+        }
       }, 1500);
     } finally {
       setAnalyzing(false);
@@ -631,7 +691,7 @@ function Call({ currentUser }) {
                   <h4 className="directory-title">Registered Users</h4>
                 </div>
                 <div className="directory-list">
-                  {INITIAL_DIRECTORY.map((contact, idx) => (
+                  {directory.map((contact, idx) => (
                     <div 
                       key={idx} 
                       className={`directory-item ${typedNumber === contact.phone ? 'selected' : ''}`}
@@ -639,15 +699,15 @@ function Call({ currentUser }) {
                     >
                       <div className="directory-item-left">
                         <div className="directory-avatar">
-                          {contact.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          {contact.name ? contact.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'C'}
                         </div>
                         <div className="directory-details">
                           <span className="directory-name">{contact.name}</span>
                           <span className="directory-phone">{contact.phone}</span>
                         </div>
                       </div>
-                      <span className={`directory-tag ${contact.relation.toLowerCase()}`}>
-                        {contact.relation}
+                      <span className={`directory-tag ${(contact.relation || 'Friend').toLowerCase()}`}>
+                        {contact.relation || 'Friend'}
                       </span>
                     </div>
                   ))}

@@ -15,6 +15,7 @@ _memory: dict[str, list[dict]] = {
     "calls": [],
     "call_analysis": [],
     "alerts": [],
+    "trusted_contacts": [],
 }
 
 
@@ -33,7 +34,7 @@ def _client() -> Client | None:
 
 def insert(table: str, values: dict) -> dict:
     values = {"id": str(uuid4()), **values}
-    if table in {"profiles", "speaker_profiles", "alerts"}:
+    if table in {"profiles", "speaker_profiles", "alerts", "trusted_contacts"}:
         values.setdefault("created_at", _now())
     if table == "call_analysis":
         values.setdefault("timestamp", _now())
@@ -58,6 +59,34 @@ def find_by(table: str, field: str, value: str) -> list[dict]:
     if client:
         return client.table(table).select("*").eq(field, value).execute().data
     return [item for item in _memory[table] if item.get(field) == value]
+
+
+def delete(table: str, record_id: str) -> bool:
+    client = _client()
+    if client:
+        response = client.table(table).delete().eq("id", record_id).execute()
+        return len(response.data) > 0
+    
+    global _memory
+    initial_len = len(_memory[table])
+    _memory[table] = [item for item in _memory[table] if item["id"] != record_id]
+    return len(_memory[table]) < initial_len
+
+
+def update(table: str, record_id: str, values: dict) -> dict:
+    client = _client()
+    if client:
+        response = client.table(table).update(values).eq("id", record_id).execute()
+        if len(response.data) > 0:
+            return response.data[0]
+        raise Exception("Record not found to update")
+    
+    global _memory
+    for item in _memory[table]:
+        if item["id"] == record_id:
+            item.update(values)
+            return item
+    raise Exception("Record not found to update")
 
 
 def _now() -> str:

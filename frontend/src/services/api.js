@@ -138,6 +138,99 @@ export async function loginUser(username, password) {
   }
 }
 
+/**
+ * Updates user profile details.
+ */
+export async function updateUserProfile(userId, name, email, phone) {
+  try {
+    const response = await client.put(`/api/users/${userId}`, {
+      name,
+      email,
+      phone,
+    });
+    return response.data;
+  } catch (error) {
+    let errMsg = 'Failed to update profile';
+    if (error.response?.data?.detail) {
+      errMsg = error.response.data.detail;
+    }
+    console.error('Update profile failed:', errMsg);
+    throw new Error(errMsg);
+  }
+}
+
+/**
+ * Fetches user-specific trusted contacts.
+ */
+export async function getContacts(userId) {
+  try {
+    const response = await client.get(`/api/contacts/?user_id=${userId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to get contacts:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Adds a trusted contact.
+ */
+export async function addContact(userId, name, phone, relation) {
+  try {
+    const response = await client.post(`/api/contacts/?user_id=${userId}`, {
+      name,
+      phone,
+      relation,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to add contact:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Deletes a trusted contact by ID.
+ */
+export async function deleteContact(contactId) {
+  try {
+    const response = await client.delete(`/api/contacts/${contactId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to delete contact:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Synchronizes contacts with Google.
+ */
+export async function syncGoogleContacts(userId, googleEmail, token) {
+  try {
+    const response = await client.post(`/api/contacts/sync-google?user_id=${userId}`, {
+      google_email: googleEmail,
+      token: token,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to sync Google contacts:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Retrieves alerts/warnings for a specific user.
+ */
+export async function getUserAlerts(userId) {
+  try {
+    const response = await client.get(`/api/users/${userId}/alerts`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to get user alerts:', error.message);
+    throw error;
+  }
+}
+
 export default {
   checkHealth,
   createCall,
@@ -145,4 +238,10 @@ export default {
   uploadAudioFile,
   registerUser,
   loginUser,
+  updateUserProfile,
+  getContacts,
+  addContact,
+  deleteContact,
+  syncGoogleContacts,
+  getUserAlerts,
 };

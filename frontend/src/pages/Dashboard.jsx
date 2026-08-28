@@ -86,12 +86,12 @@ function Dashboard() {
           </button>
         </div>
         <div className="banner-right">
-          <div className="glowing-circle-outer">
-            <div className="glowing-circle-inner">
-              <Check size={42} strokeWidth={3} className="glowing-check-icon" />
-            </div>
-            <div className="ring-pulse pulse-1" />
-            <div className="ring-pulse pulse-2" />
+          <div className="success-circle">
+            <div className="pulse-ring ring-1"></div>
+            <div className="pulse-ring ring-2"></div>
+            <div className="dotted-ring"></div>
+            <div className="glow"></div>
+            <span className="checkmark">✓</span>
           </div>
         </div>
       </div>

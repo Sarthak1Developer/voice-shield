@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Phone, Clock, ShieldAlert, BarChart3, Settings as SettingsIcon, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, Phone, Clock, ShieldAlert, BarChart3, Settings as SettingsIcon, LogOut, Shield, X } from 'lucide-react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -9,7 +9,7 @@ import Call from './pages/Call';
 import CallHistory from './pages/CallHistory';
 import ThreatAnalytics from './pages/ThreatAnalytics';
 import Settings from './pages/Settings';
-import { checkHealth } from './services/api';
+import api, { checkHealth } from './services/api';
 import './App.css';
 
 function App() {
@@ -17,6 +17,17 @@ function App() {
   const location = useLocation();
   const [user, setUser] = useState(null);
   const [backendOnline, setBackendOnline] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // Profile edit inputs
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   // Load user from localStorage on mount
   useEffect(() => {
@@ -25,6 +36,23 @@ function App() {
       setUser(JSON.parse(storedUser));
     }
   }, []);
+
+  // Fetch alerts and sync profile inputs once user is loaded
+  useEffect(() => {
+    if (user) {
+      api.getUserAlerts(user.id)
+        .then(data => {
+          setAlerts(data.map(a => ({ ...a, read: false })));
+        })
+        .catch(err => {
+          console.warn('Failed to load user alerts from API, using default mock:', err);
+        });
+      
+      setProfileName(user.name || '');
+      setProfileEmail(user.email || '');
+      setProfilePhone(user.phone || '');
+    }
+  }, [user]);
 
   // Poll health status
   useEffect(() => {
@@ -43,6 +71,16 @@ function App() {
     };
   }, []);
 
+  // Click outside to close notifications dropdown
+  useEffect(() => {
+    if (!showNotifications) return;
+    const handleOutsideClick = () => {
+      setShowNotifications(false);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [showNotifications]);
+
   const handleLogout = () => {
     localStorage.removeItem('voiceshield_user');
     setUser(null);
@@ -53,6 +91,58 @@ function App() {
     localStorage.setItem('voiceshield_user', JSON.stringify(userData));
     setUser(userData);
     navigate('/dashboard');
+  };
+
+  const handleAddAlert = (alertData) => {
+    const newAlert = {
+      id: alertData.id || `alert_${Date.now()}`,
+      severity: alertData.severity || 'HIGH',
+      message: alertData.message,
+      recommendation: alertData.recommendation || 'Exercise caution',
+      created_at: new Date().toISOString(),
+      read: false
+    };
+    setAlerts(prev => [newAlert, ...prev]);
+  };
+
+  const handleEditProfileClick = () => {
+    if (user) {
+      setProfileName(user.name || '');
+      setProfileEmail(user.email || '');
+      setProfilePhone(user.phone || '');
+      setProfileError('');
+      setProfileSuccess('');
+      setShowProfileModal(true);
+    }
+  };
+
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    if (!profileName || !profileEmail) {
+      setProfileError('Name and Email are required.');
+      return;
+    }
+    setProfileError('');
+    setProfileSuccess('');
+    setUpdatingProfile(true);
+    try {
+      const updated = await api.updateUserProfile(user.id, profileName, profileEmail, profilePhone);
+      const updatedUser = { ...user, name: updated.name, email: updated.email, phone: updated.phone };
+      setUser(updatedUser);
+      localStorage.setItem('voiceshield_user', JSON.stringify(updatedUser));
+      setProfileSuccess('Profile updated successfully!');
+      setTimeout(() => setShowProfileModal(false), 1500);
+    } catch (err) {
+      console.warn('Backend profile update failed, fallback to local storage update:', err);
+      // Fallback local storage update
+      const updatedUser = { ...user, name: profileName, email: profileEmail, phone: profilePhone };
+      setUser(updatedUser);
+      localStorage.setItem('voiceshield_user', JSON.stringify(updatedUser));
+      setProfileSuccess('Profile updated successfully (local fallback).');
+      setTimeout(() => setShowProfileModal(false), 1500);
+    } finally {
+      setUpdatingProfile(false);
+    }
   };
 
   // Determine current page title
@@ -83,6 +173,8 @@ function App() {
   if (isAuthPage && user) {
     return <Navigate to="/dashboard" replace />;
   }
+
+  const unreadAlertsCount = alerts.filter(a => !a.read).length;
 
   return (
     <div className="app-shell">
@@ -169,12 +261,65 @@ function App() {
                 </div>
               )}
 
-              <div className="notification-bell">
+              <div 
+                className="notification-bell" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowNotifications(!showNotifications);
+                }}
+                title="Notifications"
+              >
                 <ShieldAlert size={18} />
-                <span className="notification-badge">3</span>
+                {unreadAlertsCount > 0 && (
+                  <span className="notification-badge">{unreadAlertsCount}</span>
+                )}
+
+                {showNotifications && (
+                  <div className="notifications-dropdown" onClick={(e) => e.stopPropagation()}>
+                    <div className="notifications-dropdown-header">
+                      <h3>Alert Warnings</h3>
+                      {alerts.length > 0 && (
+                        <button 
+                          className="clear-all-alerts-btn"
+                          onClick={() => setAlerts([])}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                    <div className="notifications-dropdown-list">
+                      {alerts.length === 0 ? (
+                        <div className="empty-alerts">
+                          <p>No warning notifications</p>
+                        </div>
+                      ) : (
+                        alerts.map((alert) => (
+                          <div 
+                            key={alert.id} 
+                            className={`alert-dropdown-item ${alert.read ? 'read' : 'unread'} ${alert.severity.toLowerCase()}`}
+                            onClick={() => {
+                              setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, read: true } : a));
+                            }}
+                          >
+                            <div className="alert-dropdown-item-header">
+                              <span className={`alert-severity-badge ${alert.severity.toLowerCase()}`}>{alert.severity}</span>
+                              <span className="alert-time">
+                                {new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="alert-message">{alert.message}</p>
+                            {alert.recommendation && (
+                              <p className="alert-recommendation"><strong>Rec:</strong> {alert.recommendation}</p>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="user-profile-badge">
+              <div className="user-profile-badge" onClick={handleEditProfileClick} title="Edit profile info">
                 {getUserInitials()}
               </div>
             </div>
@@ -187,14 +332,69 @@ function App() {
             <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
             <Route path="/register" element={<Register />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/contacts" element={<Contacts />} />
-            <Route path="/calls" element={<Call currentUser={user} />} />
+            <Route path="/contacts" element={<Contacts currentUser={user} />} />
+            <Route path="/calls" element={<Call currentUser={user} onAddAlert={handleAddAlert} />} />
             <Route path="/history" element={<CallHistory />} />
             <Route path="/analytics" element={<ThreatAnalytics />} />
             <Route path="/settings" element={<Settings backendOnline={backendOnline} />} />
           </Routes>
         </main>
       </div>
+
+      {/* Edit Profile Modal Dialog */}
+      {showProfileModal && (
+        <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
+          <div className="modal-content-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Edit Profile Information</h3>
+              <button className="modal-close-btn" onClick={() => setShowProfileModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            {profileError && <div className="modal-error-alert">{profileError}</div>}
+            {profileSuccess && <div className="modal-success-alert">{profileSuccess}</div>}
+            
+            <form onSubmit={handleProfileSubmit} className="modal-form">
+              <div className="modal-form-group">
+                <label>Full Name</label>
+                <input 
+                  type="text" 
+                  value={profileName} 
+                  onChange={(e) => setProfileName(e.target.value)} 
+                  required
+                  disabled={updatingProfile}
+                />
+              </div>
+              <div className="modal-form-group">
+                <label>Email Address</label>
+                <input 
+                  type="email" 
+                  value={profileEmail} 
+                  onChange={(e) => setProfileEmail(e.target.value)} 
+                  required
+                  disabled={updatingProfile}
+                />
+              </div>
+              <div className="modal-form-group">
+                <label>Mobile Number</label>
+                <input 
+                  type="tel" 
+                  value={profilePhone} 
+                  onChange={(e) => setProfilePhone(e.target.value)} 
+                  disabled={updatingProfile}
+                />
+              </div>
+              <button 
+                type="submit" 
+                className="modal-submit-btn"
+                disabled={updatingProfile}
+              >
+                {updatingProfile ? 'Saving Changes...' : 'Save Changes'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
