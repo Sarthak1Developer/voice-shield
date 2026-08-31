@@ -1,37 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Phone, PhoneOff, UploadCloud, ShieldAlert, CheckCircle, AlertTriangle, RefreshCw, BarChart2, Delete, Volume2, VolumeX, Shield, Play } from 'lucide-react';
-import api, { uploadAudioFile, API_BASE } from '../services/api';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Phone, PhoneOff, UploadCloud, ShieldAlert, CheckCircle, AlertTriangle, RefreshCw, Delete, Volume2, VolumeX, Shield, Play } from 'lucide-react';
+import api, { uploadAudioFile } from '../services/api';
+import { useCall } from '../context/CallContext';
 import './Call.css';
 
 function Call({ currentUser, onAddAlert }) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const initialPhone = searchParams.get('phone') || '';
-
-  // Dynamic Directory state
-  const [directory, setDirectory] = useState([
-    { name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
-  ]);
 
   // Tab states: 'live' or 'upload'
   const [activeTab, setActiveTab] = useState('live');
 
-  // Directory and Dial Pad states
+  // Directory and Dial Pad local states
   const [typedNumber, setTypedNumber] = useState(initialPhone);
   const [calleeName, setCalleeName] = useState('');
-
-  // Call status: 'idle' | 'dialing' | 'ringing' | 'connected' | 'offline'
-  const [callState, setCallState] = useState('idle');
-  const [isIncomingCall, setIsIncomingCall] = useState(false);
-  const [incomingCallData, setIncomingCallData] = useState(null);
-
-  // Live Metrics
-  const [duration, setDuration] = useState(0);
-  const [voiceAuth, setVoiceAuth] = useState(98);
-  const [speakerMatch, setSpeakerMatch] = useState(98);
-  const [riskScore, setRiskScore] = useState(18);
-  const [isMuted, setIsMuted] = useState(false);
 
   // Upload States
   const [dragActive, setDragActive] = useState(false);
@@ -39,134 +22,41 @@ function Call({ currentUser, onAddAlert }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
 
-  // Refs for WebRTC & WebSocket
-  const wsRef = useRef(null);
-  const pcRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const remoteAudioRef = useRef(null);
-  const timerRef = useRef(null);
-  const fluctuationRef = useRef(null);
-  const iceCandidatesQueueRef = useRef([]);
+  // Global Call State & Actions
+  const {
+    callState,
+    activePeerName,
+    activePeerPhone,
+    duration,
+    voiceAuth,
+    speakerMatch,
+    riskScore,
+    setRiskScore,
+    isMuted,
+    directory,
+    setDirectory,
+    getContactNameByPhone,
+    initiateCall,
+    hangUp,
+    toggleMute,
+    resetCallState,
+    startDemoCall,
+  } = useCall();
 
   const myPhone = currentUser?.phone || '+91 99999 99999';
-  const myName = currentUser?.name || 'Anonymous';
-
-  // Refs to track states inside WebSocket subscription without tearing it down on state changes
-  const callStateRef = useRef(callState);
-  const isIncomingCallRef = useRef(isIncomingCall);
-
-  useEffect(() => {
-    callStateRef.current = callState;
-  }, [callState]);
-
-  useEffect(() => {
-    isIncomingCallRef.current = isIncomingCall;
-  }, [isIncomingCall]);
-
-  // WebSocket signaling setup
-  useEffect(() => {
-    // Connect to WebSocket signaling server
-    const cleanPhone = encodeURIComponent(myPhone);
-    const wsBase = API_BASE.replace(/^http/, 'ws');
-    const wsUrl = `${wsBase}/api/calls/ws/${cleanPhone}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
-      console.log('WS Message received:', data.type);
-
-      switch (data.type) {
-        case 'call_initiate':
-          // Only receive if idle
-          if (callStateRef.current === 'idle' && !isIncomingCallRef.current) {
-            setIncomingCallData(data);
-            setIsIncomingCall(true);
-          } else {
-            // Send busy message
-            ws.send(JSON.stringify({
-              type: 'call_status',
-              status: 'busy',
-              to_phone: data.from_phone
-            }));
-          }
-          break;
-
-        case 'call_status':
-          if (data.status === 'offline') {
-            setCallState('offline');
-          } else if (data.status === 'busy') {
-            alert('User is currently busy on another call.');
-            resetCallState();
-          } else if (data.status === 'accepted') {
-            setCallState('connected');
-            setCalleeName(getContactNameByPhone(data.from_phone));
-            await startCallerWebRTC(data.from_phone);
-          } else if (data.status === 'declined') {
-            resetCallState();
-          } else if (data.status === 'ended') {
-            resetCallState();
-          }
-          break;
-
-        case 'webrtc_offer':
-          setCallState('connected');
-          await handleWebRTCOffer(data.offer, data.from_phone);
-          break;
-
-        case 'webrtc_answer':
-          if (pcRef.current) {
-            try {
-              await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-              await processQueuedCandidates();
-            } catch (err) {
-              console.error('Error setting remote description or processing queued candidates:', err);
-            }
-          }
-          break;
-
-        case 'ice_candidate':
-          if (data.candidate) {
-            const pc = pcRef.current;
-            if (pc && pc.remoteDescription) {
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-              } catch (err) {
-                console.error('Error adding ICE candidate:', err);
-              }
-            } else {
-              iceCandidatesQueueRef.current.push(data.candidate);
-              console.log('Queued ICE candidate (remote description not set yet)');
-            }
-          }
-          break;
-
-        default:
-          break;
-      }
-    };
-
-    ws.onclose = () => console.log('WebSocket connection closed.');
-    ws.onerror = (err) => console.error('WebSocket error:', err);
-
-    return () => {
-      if (wsRef.current) wsRef.current.close();
-      cleanupWebRTC();
-    };
-  }, [myPhone]);
 
   // Load dynamic contacts for current user
   useEffect(() => {
     if (currentUser) {
       api.getContacts(currentUser.id)
-        .then(data => {
+        .then((data) => {
           const list = [
             ...data,
             { id: 'echo', name: 'VoiceShield Echo (Demo)', relation: 'System', phone: '000' }
           ];
           setDirectory(list);
         })
-        .catch(err => {
+        .catch((err) => {
           console.warn('Failed to load dynamic contacts, using local storage cache fallback:', err);
           const cached = localStorage.getItem(`voiceshield_contacts_${currentUser.id}`);
           if (cached) {
@@ -181,88 +71,24 @@ function Call({ currentUser, onAddAlert }) {
           }
         });
     }
-  }, [currentUser]);
-
-  // Alert trigger if riskScore crosses 35 during an active call
-  const alertTriggeredRef = useRef(false);
-  useEffect(() => {
-    if (callState !== 'connected') {
-      alertTriggeredRef.current = false;
-      return;
-    }
-    
-    if (riskScore > 35 && !alertTriggeredRef.current) {
-      alertTriggeredRef.current = true;
-      if (onAddAlert) {
-        onAddAlert({
-          severity: 'HIGH',
-          message: `Elevated call risk detected: ${riskScore}% spoofing markers in call with ${calleeName || typedNumber}.`,
-          recommendation: 'Review credentials, do not share OTPs, and verify caller identity.'
-        });
-      }
-    }
-  }, [riskScore, callState, calleeName, typedNumber, onAddAlert]);
+  }, [currentUser, setDirectory]);
 
   // Update callee details if initial phone parameter is loaded
   useEffect(() => {
     if (initialPhone) {
       setTypedNumber(initialPhone);
-      // Wait for directory to be loaded or resolve using directory helper
-      const contact = directory.find(c => c.phone === initialPhone);
-      setCalleeName(contact ? contact.name : `+91 ${initialPhone.replace(/[^\d]/g, '').slice(-10)}`);
+      const contact = directory.find((c) => c.phone === initialPhone);
+      setCalleeName(contact ? contact.name : getContactNameByPhone(initialPhone));
     }
-  }, [initialPhone, directory]);
-
-  // Active call timers & features fluctuations
-  useEffect(() => {
-    if (callState === 'connected') {
-      setDuration(0);
-      timerRef.current = setInterval(() => {
-        setDuration(prev => prev + 1);
-      }, 1000);
-
-      // Fluctuate scores slightly to look like active background scanning
-      fluctuationRef.current = setInterval(() => {
-        setVoiceAuth(prev => {
-          const delta = (Math.random() - 0.5) * 4;
-          return Math.max(90, Math.min(99, Math.round(prev + delta)));
-        });
-        setSpeakerMatch(prev => {
-          const delta = (Math.random() - 0.5) * 3;
-          return Math.max(92, Math.min(99, Math.round(prev + delta)));
-        });
-        setRiskScore(prev => {
-          const delta = (Math.random() - 0.5) * 5;
-          return Math.max(10, Math.min(28, Math.round(prev + delta)));
-        });
-      }, 2500);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (fluctuationRef.current) clearInterval(fluctuationRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (fluctuationRef.current) clearInterval(fluctuationRef.current);
-    };
-  }, [callState]);
-
-  const getContactNameByPhone = (phone) => {
-    const contact = directory.find(c => c.phone === phone);
-    return contact ? contact.name : `+91 ${phone.replace(/[^\d]/g, '').slice(-10)}`;
-  };
+  }, [initialPhone, directory, getContactNameByPhone]);
 
   // Dial pad keys press
   const handleKeyPress = (val) => {
-    setTypedNumber(prev => prev + val);
+    setTypedNumber((prev) => prev + val);
   };
 
   const handleBackspace = () => {
-    setTypedNumber(prev => prev.slice(0, -1));
-  };
-
-  const handleClear = () => {
-    setTypedNumber('');
+    setTypedNumber((prev) => prev.slice(0, -1));
   };
 
   const selectContact = (phone) => {
@@ -273,274 +99,8 @@ function Call({ currentUser, onAddAlert }) {
   // Initiate Internet Call
   const handleInitiateCall = () => {
     if (!typedNumber) return;
-
-    // Check if demo call
-    if (typedNumber === '000' || typedNumber === 'echo') {
-      setCalleeName('VoiceShield Echo (Demo)');
-      setCallState('connected');
-      // Trigger voice loopback or simulated fluctuation
-      startDemoCall();
-      return;
-    }
-
-    setCallState('dialing');
-    setCalleeName(getContactNameByPhone(typedNumber));
-
-    // Send call offer message to signalling server
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'call_initiate',
-        to_phone: typedNumber,
-        from_name: myName
-      }));
-    }
-  };
-
-  // Answer call
-  const handleAnswerCall = async () => {
-    if (!incomingCallData) return;
-    setIsIncomingCall(false);
-    setCallState('connected');
-    setCalleeName(incomingCallData.from_name || getContactNameByPhone(incomingCallData.from_phone));
-
-    // Accept via WebSocket
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'call_status',
-        status: 'accepted',
-        to_phone: incomingCallData.from_phone
-      }));
-    }
-
-    await startCalleeWebRTC(incomingCallData.from_phone); // We are answerer, wait for offer
-  };
-
-  // Decline call
-  const handleDeclineCall = () => {
-    if (!incomingCallData) return;
-    setIsIncomingCall(false);
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'call_status',
-        status: 'declined',
-        to_phone: incomingCallData.from_phone
-      }));
-    }
-    setIncomingCallData(null);
-  };
-
-  // Hangup call
-  const handleHangUp = () => {
-    const activeCalleePhone = incomingCallData ? incomingCallData.from_phone : typedNumber;
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && activeCalleePhone) {
-      wsRef.current.send(JSON.stringify({
-        type: 'call_status',
-        status: 'ended',
-        to_phone: activeCalleePhone
-      }));
-    }
-
-    // Save call history record to localStorage
-    saveCallToHistory(calleeName, activeCalleePhone, riskScore, duration);
-
-    resetCallState();
-  };
-
-  const saveCallToHistory = (name, phone, finalScore, seconds) => {
-    try {
-      const historyStr = localStorage.getItem('voiceshield_call_history') || '[]';
-      const history = JSON.parse(historyStr);
-      const risk = finalScore < 34 ? 'low' : finalScore < 67 ? 'medium' : 'high';
-      const status = risk === 'low' ? 'Safe' : risk === 'medium' ? 'Warned' : 'Blocked';
-      const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
-      const newRecord = {
-        id: String(Date.now()),
-        name: name,
-        phone: phone,
-        time: `Today, ${formattedTime}`,
-        risk: risk,
-        score: finalScore,
-        status: status
-      };
-      
-      localStorage.setItem('voiceshield_call_history', JSON.stringify([newRecord, ...history]));
-    } catch (err) {
-      console.error('Failed to log call history:', err);
-    }
-  };
-
-  const resetCallState = () => {
-    cleanupWebRTC();
-    setCallState('idle');
-    setIsIncomingCall(false);
-    setIncomingCallData(null);
-    setDuration(0);
-    setVoiceAuth(98);
-    setSpeakerMatch(98);
-    setRiskScore(18);
-  };
-
-  // WebRTC logic
-  const initializePeerConnection = async (peerPhone) => {
-    cleanupWebRTC();
-
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.muted = false;
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
-      ]
-    });
-    pcRef.current = pc;
-
-    pc.oniceconnectionstatechange = () => {
-      console.log('ICE Connection State:', pc.iceConnectionState);
-    };
-    pc.onconnectionstatechange = () => {
-      console.log('Connection State:', pc.connectionState);
-    };
-
-    // Capture Microphone
-    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    localStreamRef.current = localStream;
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-    // ICE Candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'ice_candidate',
-          candidate: event.candidate,
-          to_phone: peerPhone
-        }));
-      }
-    };
-
-    // Remote streams
-    pc.ontrack = (event) => {
-      console.log('Received remote track:', event.track);
-      if (remoteAudioRef.current) {
-        if (event.streams && event.streams[0]) {
-          remoteAudioRef.current.srcObject = event.streams[0];
-        } else {
-          if (!remoteAudioRef.current.srcObject) {
-            remoteAudioRef.current.srcObject = new MediaStream();
-          }
-          remoteAudioRef.current.srcObject.addTrack(event.track);
-        }
-        remoteAudioRef.current.play().catch(err => console.log('Audio autoplay blocked or failed:', err));
-      }
-    };
-
-    return pc;
-  };
-
-  const startCallerWebRTC = async (peerPhone) => {
-    try {
-      const pc = await initializePeerConnection(peerPhone);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      wsRef.current.send(JSON.stringify({
-        type: 'webrtc_offer',
-        offer: offer,
-        to_phone: peerPhone
-      }));
-    } catch (err) {
-      console.error('Caller WebRTC setup failed:', err);
-    }
-  };
-
-  const startCalleeWebRTC = async (peerPhone) => {
-    try {
-      await initializePeerConnection(peerPhone);
-    } catch (err) {
-      console.error('Callee WebRTC setup failed:', err);
-    }
-  };
-
-  const handleWebRTCOffer = async (offer, peerPhone) => {
-    try {
-      let pc = pcRef.current;
-      if (!pc) {
-        pc = await initializePeerConnection(peerPhone);
-      }
-
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      await processQueuedCandidates();
-
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'webrtc_answer',
-          answer: answer,
-          to_phone: peerPhone
-        }));
-      }
-    } catch (err) {
-      console.error('Failed handling WebRTC offer:', err);
-    }
-  };
-
-  const processQueuedCandidates = async () => {
-    const pc = pcRef.current;
-    if (!pc) return;
-
-    const queue = iceCandidatesQueueRef.current;
-    console.log(`Processing ${queue.length} queued ICE candidates`);
-    for (const candidate of queue) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (err) {
-        console.error('Error adding queued ICE candidate:', err);
-      }
-    }
-    iceCandidatesQueueRef.current = [];
-  };
-
-  const cleanupWebRTC = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
-    }
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-    }
-    iceCandidatesQueueRef.current = [];
-  };
-
-  const startDemoCall = () => {
-    // Start fluctuating and waveforms for test demo loops
-    navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(stream => {
-        localStreamRef.current = stream;
-        // Optionally loop back audio to speakers for confirmation:
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = stream;
-          remoteAudioRef.current.muted = true; // Mute local echo to prevent squeals
-        }
-      })
-      .catch(err => console.warn('Demo call mic capture failed:', err));
-  };
-
-  const startDemoCallSimulation = () => {
-    setCalleeName(getContactNameByPhone(typedNumber) + ' (Demo Scan)');
-    setCallState('connected');
-    startDemoCall();
+    const name = calleeName || getContactNameByPhone(typedNumber);
+    initiateCall(typedNumber, name);
   };
 
   // Format MM:SS
@@ -554,9 +114,9 @@ function Call({ currentUser, onAddAlert }) {
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === 'dragenter' || e.type === 'dragover') {
       setDragActive(true);
-    } else if (e.type === "dragleave") {
+    } else if (e.type === 'dragleave') {
       setDragActive(false);
     }
   };
@@ -580,7 +140,7 @@ function Call({ currentUser, onAddAlert }) {
     setUploadFile(file);
     setAnalyzing(true);
     setAnalysisResult(null);
-    
+
     try {
       const result = await uploadAudioFile(file);
       setAnalysisResult(result);
@@ -614,21 +174,24 @@ function Call({ currentUser, onAddAlert }) {
     }
   };
 
+  const displayedPeerName = activePeerName || calleeName || getContactNameByPhone(typedNumber);
+  const displayedPeerPhone = activePeerPhone || typedNumber;
+  const avatarInitials = displayedPeerName ? displayedPeerName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'VS';
+
   return (
     <section className="call-page-container">
-      <audio ref={remoteAudioRef} autoPlay style={{ display: 'none' }} />
       {/* Navigation tabs */}
       <div className="tabs-header">
         <button 
           className={`tab-btn ${activeTab === 'live' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('live'); }}
+          onClick={() => setActiveTab('live')}
           disabled={callState !== 'idle'}
         >
           Live Protection
         </button>
         <button 
           className={`tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('upload'); }}
+          onClick={() => setActiveTab('upload')}
           disabled={callState !== 'idle'}
         >
           Audio Upload Analysis
@@ -643,7 +206,7 @@ function Call({ currentUser, onAddAlert }) {
               <div className="lobby-dialpad-panel">
                 <h3 className="lobby-title-sub">SECURE TELEPHONY</h3>
                 <h2 className="lobby-title-main">Secure Dial Pad</h2>
-                
+
                 <div className="dialpad-number-display">
                   <input 
                     type="text" 
@@ -718,15 +281,15 @@ function Call({ currentUser, onAddAlert }) {
             <div className="calling-panel">
               <div className="calling-status-card">
                 <div className="ringing-avatar pulse">
-                  {calleeName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                  {avatarInitials}
                 </div>
-                <h2 className="calling-callee-name">{calleeName}</h2>
-                <p className="calling-number">{typedNumber}</p>
+                <h2 className="calling-callee-name">{displayedPeerName}</h2>
+                <p className="calling-number">{displayedPeerPhone}</p>
                 <div className="pulse-connection-loader">
                   <div className="loader-ring" />
                   <span className="ringing-label">DIALING MONITORED SESSION...</span>
                 </div>
-                <button className="hangup-action-btn" onClick={handleHangUp}>
+                <button className="hangup-action-btn" onClick={hangUp}>
                   <PhoneOff size={20} />
                   <span>Cancel call</span>
                 </button>
@@ -738,10 +301,10 @@ function Call({ currentUser, onAddAlert }) {
                 <div className="lobby-icon-container warning">
                   <AlertTriangle size={32} />
                 </div>
-                <h2 className="calling-callee-name">{calleeName} is Offline</h2>
+                <h2 className="calling-callee-name">{displayedPeerName} is Offline</h2>
                 <p className="offline-subtext">This user is not registered or connected right now.</p>
                 <div className="offline-actions">
-                  <button className="demo-session-btn" onClick={startDemoCallSimulation}>
+                  <button className="demo-session-btn" onClick={() => startDemoCall(displayedPeerPhone, displayedPeerName)}>
                     <Play size={14} fill="currentColor" />
                     <span>Start Mock Demo call</span>
                   </button>
@@ -764,11 +327,11 @@ function Call({ currentUser, onAddAlert }) {
                 <div className="active-call-avatar-center">
                   <div className="active-avatar-glow">
                     <span className="active-avatar-initials">
-                      {calleeName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                      {avatarInitials}
                     </span>
                   </div>
-                  <h3 className="active-callee-title">{calleeName}</h3>
-                  <span className="active-callee-meta">{typedNumber}</span>
+                  <h3 className="active-callee-title">{displayedPeerName}</h3>
+                  <span className="active-callee-meta">{displayedPeerPhone}</span>
                 </div>
 
                 {/* Animated Waveform */}
@@ -795,7 +358,7 @@ function Call({ currentUser, onAddAlert }) {
                         cx="50" 
                         cy="50" 
                         r="40" 
-                        style={{ strokeDasharray: `${2 * Math.PI * 40}`, strokeDashoffset: `${2 * Math.PI * 40 * (1 - riskScore/100)}` }}
+                        style={{ strokeDasharray: `${2 * Math.PI * 40}`, strokeDashoffset: `${2 * Math.PI * 40 * (1 - riskScore / 100)}` }}
                       />
                     </svg>
                     <div className="gauge-number-center">
@@ -807,11 +370,11 @@ function Call({ currentUser, onAddAlert }) {
 
                 {/* Control Options */}
                 <div className="active-call-controls-row">
-                  <button className={`control-btn ${isMuted ? 'muted' : ''}`} onClick={() => setIsMuted(!isMuted)}>
+                  <button className={`control-btn ${isMuted ? 'muted' : ''}`} onClick={toggleMute}>
                     {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                    <span>Mute</span>
+                    <span>{isMuted ? 'Unmute' : 'Mute'}</span>
                   </button>
-                  <button className="control-btn hangup" onClick={handleHangUp}>
+                  <button className="control-btn hangup" onClick={hangUp}>
                     <PhoneOff size={18} />
                     <span>End call</span>
                   </button>
@@ -838,17 +401,17 @@ function Call({ currentUser, onAddAlert }) {
                 <div className="analysis-feed-list">
                   <div className="analysis-feed-item bar-green">
                     <span className="feed-item-title">Voice embedding</span>
-                    <p className="feed-item-desc">Speaker profile is consistent with previous verified calls.</p>
+                    <p className="feed-item-desc">Speaker profile is consistent with previous verified calls ({voiceAuth}% match).</p>
                   </div>
 
                   <div className="analysis-feed-item bar-green">
                     <span className="feed-item-title">Spectral analysis</span>
-                    <p className="feed-item-desc">No strong vocoder signature. Natural harmonic variance observed.</p>
+                    <p className="feed-item-desc">No strong vocoder signature. Natural harmonic variance observed ({speakerMatch}% match).</p>
                   </div>
 
                   <div className="analysis-feed-item bar-cyan">
                     <span className="feed-item-title">Prosody</span>
-                    <p className="feed-item-desc">Speaking rhythm is slightly unusual but below alert threshold.</p>
+                    <p className="feed-item-desc">Speaking rhythm is natural and well below spoofing threshold.</p>
                   </div>
 
                   <div className="analysis-feed-item bar-green">
@@ -876,30 +439,6 @@ function Call({ currentUser, onAddAlert }) {
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Incoming Call Popup Overlay */}
-          {isIncomingCall && incomingCallData && (
-            <div className="incoming-call-overlay">
-              <div className="incoming-call-card">
-                <div className="incoming-avatar pulse">
-                  {incomingCallData.from_name ? incomingCallData.from_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'IN'}
-                </div>
-                <h3 className="incoming-caller-title">Incoming Protected Call</h3>
-                <h2 className="incoming-caller-name">{incomingCallData.from_name || getContactNameByPhone(incomingCallData.from_phone)}</h2>
-                <p className="incoming-caller-phone">{incomingCallData.from_phone}</p>
-                <div className="incoming-actions">
-                  <button className="answer-btn" onClick={handleAnswerCall}>
-                    <Phone size={16} fill="currentColor" />
-                    <span>Answer</span>
-                  </button>
-                  <button className="decline-btn" onClick={handleDeclineCall}>
-                    <PhoneOff size={16} />
-                    <span>Decline</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -953,18 +492,18 @@ function Call({ currentUser, onAddAlert }) {
             {analysisResult && !analyzing && (
               <div className="analysis-results-card">
                 <h3>Verification Report</h3>
-                
+
                 <div className="results-grid">
                   <div className="result-metric">
                     <span className="result-label">Deepfake Score</span>
                     <span className="result-val">{Math.round(analysisResult.deepfake_score * 100)}%</span>
                   </div>
-                  
+
                   <div className="result-metric">
                     <span className="result-label">Speaker Match</span>
                     <span className="result-val">{Math.round(analysisResult.speaker_similarity * 100)}%</span>
                   </div>
-                  
+
                   <div className="result-metric risk-status">
                     <span className="result-label">Risk</span>
                     <span className={`result-val-risk severity-${analysisResult.severity ? analysisResult.severity.toLowerCase() : 'high'}`}>

@@ -526,3 +526,178 @@
   }
 }
 
+/* Floating Active Call Bar */
+.active-call-floating-bar {
+  position: fixed;
+  bottom: 24px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  background: rgba(18, 20, 29, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 240, 194, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 240, 194, 0.15);
+  border-radius: 14px;
+  padding: 0.75rem 1.25rem;
+  z-index: 999;
+  cursor: pointer;
+  animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s ease;
+}
+
+.active-call-floating-bar:hover {
+  border-color: var(--color-accent);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 240, 194, 0.25);
+  transform: translateY(-2px);
+}
+
+.floating-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.floating-bar-pulse-indicator {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.pulsing-call-dot {
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-success);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--color-success);
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.floating-bar-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.floating-bar-label {
+  font-size: 0.65rem;
+  font-weight: 750;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.floating-bar-peer {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.floating-bar-center {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.5rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.floating-bar-timer {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.floating-bar-risk-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+}
+
+.floating-bar-risk-pill.safe {
+  background-color: var(--color-success-dim);
+  color: var(--color-success);
+  border: 1px solid rgba(0, 240, 194, 0.3);
+}
+
+.floating-bar-risk-pill.danger {
+  background-color: var(--color-danger-dim);
+  color: var(--color-danger);
+  border: 1px solid rgba(255, 74, 107, 0.4);
+}
+
+.floating-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.floating-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 750;
+  transition: all 0.2s ease;
+  border: 1px solid var(--border-color);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.floating-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.floating-btn.mute.muted {
+  background-color: var(--color-danger-dim);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.floating-btn.hangup {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #fff;
+}
+
+.floating-btn.hangup:hover {
+  opacity: 0.9;
+  box-shadow: 0 0 10px rgba(255, 74, 107, 0.5);
+}
+
+.floating-btn.console {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: var(--color-accent-dim);
+  border-color: rgba(0, 240, 194, 0.4);
+  color: var(--color-accent);
+  padding: 0.5rem 0.75rem;
+}
+
+.floating-btn.console:hover {
+  background-color: var(--color-accent);
+  color: var(--bg-main);
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+

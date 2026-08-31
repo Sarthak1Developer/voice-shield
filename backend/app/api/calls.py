@@ -59,8 +59,8 @@ class CallSignalingManager:
         await websocket.accept()
         self.active_sockets[phone] = websocket
 
-    def disconnect(self, phone: str):
-        if phone in self.active_sockets:
+    def disconnect(self, phone: str, websocket: WebSocket):
+        if self.active_sockets.get(phone) == websocket:
             del self.active_sockets[phone]
 
     def find_socket(self, target_phone: str) -> tuple[str | None, WebSocket | None]:
@@ -117,4 +117,4 @@ async def websocket_endpoint(websocket: WebSocket, phone: str):
     except Exception:
         pass
     finally:
-        signaling_manager.disconnect(phone)
+        signaling_manager.disconnect(phone, websocket)
