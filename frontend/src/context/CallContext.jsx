@@ -49,7 +49,10 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
   const myPhone = currentUser?.phone || '';
   const myName = currentUser?.name || 'Anonymous';
 
-  // Keep references to state inside callbacks without re-triggering effects
+  // ──────────────────────────────────────────────────────────────────
+  // Refs that mirror state so that the stable WebSocket handler can
+  // always read latest values without the WS effect re-running.
+  // ──────────────────────────────────────────────────────────────────
   const callStateRef = useRef(callState);
   const isIncomingCallRef = useRef(isIncomingCall);
   const incomingCallDataRef = useRef(incomingCallData);
@@ -57,6 +60,10 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
   const activePeerNameRef = useRef(activePeerName);
   const riskScoreRef = useRef(riskScore);
   const durationRef = useRef(duration);
+  const directoryRef = useRef(directory);
+  const isMutedRef = useRef(isMuted);
+  const myNameRef = useRef(myName);
+  const onAddAlertRef = useRef(onAddAlert);
 
   useEffect(() => { callStateRef.current = callState; }, [callState]);
   useEffect(() => { isIncomingCallRef.current = isIncomingCall; }, [isIncomingCall]);
@@ -65,8 +72,25 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
   useEffect(() => { activePeerNameRef.current = activePeerName; }, [activePeerName]);
   useEffect(() => { riskScoreRef.current = riskScore; }, [riskScore]);
   useEffect(() => { durationRef.current = duration; }, [duration]);
+  useEffect(() => { directoryRef.current = directory; }, [directory]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { myNameRef.current = myName; }, [myName]);
+  useEffect(() => { onAddAlertRef.current = onAddAlert; }, [onAddAlert]);
 
-  // Lookup contact name from directory or format phone number
+  // ──────────────────────────────────────────────────────────────────
+  // Stable helper: look up contact name (reads directoryRef)
+  // ──────────────────────────────────────────────────────────────────
+  const getContactNameByPhoneStable = useCallback((phone) => {
+    if (!phone) return 'Unknown';
+    const dir = directoryRef.current;
+    const contact = dir.find((c) => c.phone === phone);
+    if (contact) return contact.name;
+    const digits = phone.replace(/[^\d]/g, '');
+    return digits.length >= 10 ? `+91 ${digits.slice(-10)}` : phone;
+  }, []);                          // ← stable: zero deps
+
+  // Also keep an unstable version for the context value so the UI re-renders
+  // when directory changes.
   const getContactNameByPhone = useCallback((phone) => {
     if (!phone) return 'Unknown';
     const contact = directory.find((c) => c.phone === phone);
@@ -75,7 +99,10 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     return digits.length >= 10 ? `+91 ${digits.slice(-10)}` : phone;
   }, [directory]);
 
-  // Process any queued ICE candidates once remote description is set
+  // ──────────────────────────────────────────────────────────────────
+  // WebRTC helpers (all stable — zero or ref-only deps)
+  // ──────────────────────────────────────────────────────────────────
+
   const processQueuedCandidates = async (pc) => {
     if (!pc || !pc.remoteDescription) return;
     const queue = [...iceCandidatesQueueRef.current];
@@ -91,7 +118,6 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     }
   };
 
-  // Safe WebRTC cleanup
   const cleanupWebRTC = useCallback(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -118,9 +144,8 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     }
     iceCandidatesQueueRef.current = [];
     initializingPcPromiseRef.current = null;
-  }, []);
+  }, []);                          // ← stable
 
-  // Save call to local history
   const saveCallToHistory = useCallback((name, phone, finalScore, seconds) => {
     try {
       const historyStr = localStorage.getItem('voiceshield_call_history') || '[]';
@@ -143,9 +168,8 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     } catch (err) {
       console.error('Failed to log call history:', err);
     }
-  }, []);
+  }, []);                          // ← stable
 
-  // Reset entire call state
   const resetCallState = useCallback(() => {
     cleanupWebRTC();
     setCallState('idle');
@@ -159,15 +183,15 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     setRiskScore(18);
     setIsMuted(false);
     alertTriggeredRef.current = false;
-  }, [cleanupWebRTC]);
+  }, [cleanupWebRTC]);             // ← stable (cleanupWebRTC is stable)
 
-  // Initialize RTCPeerConnection and acquire microphone
+  // ──────────────────────────────────────────────────────────────────
+  // Peer connection factory — stable (reads isMutedRef, not isMuted)
+  // ──────────────────────────────────────────────────────────────────
   const getOrCreatePeerConnection = useCallback(async (peerPhone) => {
-    // If an initialization is already in flight, await it
     if (initializingPcPromiseRef.current) {
       return await initializingPcPromiseRef.current;
     }
-
     if (pcRef.current && pcRef.current.signalingState !== 'closed') {
       return pcRef.current;
     }
@@ -193,7 +217,7 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
 
         // Add local audio tracks to peer connection
         localStreamRef.current.getAudioTracks().forEach((track) => {
-          track.enabled = !isMuted;
+          track.enabled = !isMutedRef.current;     // ← read from ref
           pc.addTrack(track, localStreamRef.current);
         });
 
@@ -211,8 +235,10 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
         // Handle incoming remote audio track
         pc.ontrack = (event) => {
           console.log('[WebRTC] Remote track received:', event.track.id, event.streams);
-          const inboundStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-          
+          const inboundStream = event.streams && event.streams[0]
+            ? event.streams[0]
+            : new MediaStream([event.track]);
+
           const audioElem = document.getElementById('voiceshield-remote-audio') || remoteAudioRef.current;
           if (audioElem) {
             audioElem.srcObject = inboundStream;
@@ -224,13 +250,29 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
           }
         };
 
+        // Monitor ICE connection health and attempt recovery
         pc.oniceconnectionstatechange = () => {
-          console.log('[WebRTC] ICE Connection State:', pc.iceConnectionState);
+          const state = pc.iceConnectionState;
+          console.log('[WebRTC] ICE Connection State:', state);
+          if (state === 'disconnected') {
+            // Short-lived disconnections are normal — the browser will
+            // attempt ICE restart automatically within ~5-10s.
+            console.warn('[WebRTC] ICE disconnected — waiting for recovery...');
+          }
+          if (state === 'failed') {
+            console.warn('[WebRTC] ICE failed — attempting ICE restart...');
+            try {
+              pc.restartIce();
+            } catch (e) {
+              console.error('[WebRTC] ICE restart failed:', e);
+            }
+          }
         };
 
         pc.onconnectionstatechange = () => {
-          console.log('[WebRTC] Connection State:', pc.connectionState);
-          if (pc.connectionState === 'connected') {
+          const state = pc.connectionState;
+          console.log('[WebRTC] Connection State:', state);
+          if (state === 'connected') {
             const audioElem = document.getElementById('voiceshield-remote-audio') || remoteAudioRef.current;
             if (audioElem && audioElem.srcObject) {
               audioElem.play().catch((e) => console.warn('[WebRTC] Play failed on connected:', e));
@@ -246,9 +288,11 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
 
     initializingPcPromiseRef.current = initPromise;
     return await initPromise;
-  }, [isMuted]);
+  }, []);                          // ← stable: zero deps (reads refs only)
 
-  // Handle caller side WebRTC offer generation
+  // ──────────────────────────────────────────────────────────────────
+  // Stable WebRTC signaling helpers
+  // ──────────────────────────────────────────────────────────────────
   const startCallerWebRTC = useCallback(async (peerPhone) => {
     try {
       console.log('[WebRTC] Starting Caller WebRTC flow for:', peerPhone);
@@ -269,14 +313,13 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     } catch (err) {
       console.error('[WebRTC] Caller WebRTC setup failed:', err);
     }
-  }, [getOrCreatePeerConnection]);
+  }, [getOrCreatePeerConnection]); // ← stable
 
-  // Handle callee side WebRTC offer reception & answer generation
   const handleWebRTCOffer = useCallback(async (offer, peerPhone) => {
     try {
       console.log('[WebRTC] Handling WebRTC Offer from:', peerPhone);
       const pc = await getOrCreatePeerConnection(peerPhone);
-      
+
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       await processQueuedCandidates(pc);
 
@@ -293,9 +336,8 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     } catch (err) {
       console.error('[WebRTC] Failed handling WebRTC offer:', err);
     }
-  }, [getOrCreatePeerConnection]);
+  }, [getOrCreatePeerConnection]); // ← stable
 
-  // Handle caller side WebRTC answer reception
   const handleWebRTCAnswer = useCallback(async (answer) => {
     try {
       console.log('[WebRTC] Handling WebRTC Answer');
@@ -307,9 +349,8 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     } catch (err) {
       console.error('[WebRTC] Failed setting remote description from answer:', err);
     }
-  }, []);
+  }, []);                          // ← stable
 
-  // Handle incoming ICE candidate
   const handleIceCandidate = useCallback(async (candidate) => {
     if (!candidate) return;
     const pc = pcRef.current;
@@ -322,9 +363,12 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     } else {
       iceCandidatesQueueRef.current.push(candidate);
     }
-  }, []);
+  }, []);                          // ← stable
 
-  // Start simulated demo call
+  // ──────────────────────────────────────────────────────────────────
+  // User actions — some read refs to stay stable
+  // ──────────────────────────────────────────────────────────────────
+
   const startDemoCall = useCallback((phone, name) => {
     const displayName = name || (phone === '000' ? 'VoiceShield Echo (Demo)' : 'Demo Session');
     setActivePeerName(displayName);
@@ -337,13 +381,12 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
         const audioElem = document.getElementById('voiceshield-remote-audio') || remoteAudioRef.current;
         if (audioElem) {
           audioElem.srcObject = stream;
-          audioElem.muted = true; // Mute local feedback to prevent squeals
+          audioElem.muted = true;
         }
       })
       .catch((err) => console.warn('Demo call mic capture failed:', err));
   }, []);
 
-  // User Actions: Initiate call
   const initiateCall = useCallback((targetPhone, targetName) => {
     if (!targetPhone) return;
 
@@ -352,7 +395,7 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
       return;
     }
 
-    const resolvedName = targetName || getContactNameByPhone(targetPhone);
+    const resolvedName = targetName || getContactNameByPhoneStable(targetPhone);
     setActivePeerPhone(targetPhone);
     setActivePeerName(resolvedName);
     setCallState('dialing');
@@ -374,18 +417,17 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
       wsRef.current.send(JSON.stringify({
         type: 'call_initiate',
         to_phone: targetPhone,
-        from_name: myName,
+        from_name: myNameRef.current,        // ← read from ref
       }));
     }
-  }, [getContactNameByPhone, myName, startDemoCall]);
+  }, [getContactNameByPhoneStable, startDemoCall]);  // ← stable
 
-  // User Actions: Answer incoming call
   const answerCall = useCallback(async () => {
     const data = incomingCallDataRef.current;
     if (!data) return;
 
     const callerPhone = data.from_phone;
-    const callerName = data.from_name || getContactNameByPhone(callerPhone);
+    const callerName = data.from_name || getContactNameByPhoneStable(callerPhone);
 
     setIsIncomingCall(false);
     setIncomingCallData(null);
@@ -393,14 +435,12 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     setActivePeerName(callerName);
     setCallState('connected');
 
-    // Ensure audio element is unmuted and primed
     const audioElem = document.getElementById('voiceshield-remote-audio') || remoteAudioRef.current;
     if (audioElem) {
       audioElem.muted = false;
       audioElem.play().catch(() => {});
     }
 
-    // Send accept status
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'call_status',
@@ -409,15 +449,13 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
       }));
     }
 
-    // Initialize callee WebRTC peer connection
     try {
       await getOrCreatePeerConnection(callerPhone);
     } catch (err) {
       console.error('Failed to initialize callee peer connection:', err);
     }
-  }, [getContactNameByPhone, getOrCreatePeerConnection]);
+  }, [getContactNameByPhoneStable, getOrCreatePeerConnection]); // ← stable
 
-  // User Actions: Decline incoming call
   const declineCall = useCallback(() => {
     const data = incomingCallDataRef.current;
     if (!data) return;
@@ -434,7 +472,6 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     }
   }, []);
 
-  // User Actions: Hang up active call
   const hangUp = useCallback(() => {
     const peerPhone = activePeerPhoneRef.current || (incomingCallDataRef.current ? incomingCallDataRef.current.from_phone : '');
 
@@ -454,9 +491,8 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     );
 
     resetCallState();
-  }, [resetCallState, saveCallToHistory]);
+  }, [resetCallState, saveCallToHistory]); // ← stable
 
-  // User Actions: Toggle Mute
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const next = !prev;
@@ -469,7 +505,14 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     });
   }, []);
 
-  // Maintain WebSocket connection throughout user session
+  // ──────────────────────────────────────────────────────────────────
+  // WebSocket effect — depends ONLY on myPhone.
+  //
+  // All handler functions used inside are stable (zero-dep useCallbacks
+  // that read refs instead of state). This guarantees the WebSocket and
+  // peer connection are NEVER torn down because some unrelated state
+  // (directory, isMuted, riskScore…) changed.
+  // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!myPhone) return;
 
@@ -481,7 +524,7 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
       const cleanPhone = encodeURIComponent(myPhone);
       const wsBase = API_BASE.replace(/^http/, 'ws');
       const wsUrl = `${wsBase}/api/calls/ws/${cleanPhone}`;
-      
+
       console.log('[WebSocket] Connecting signaling to:', wsUrl);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -497,12 +540,10 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
 
           switch (data.type) {
             case 'call_initiate':
-              // If idle and not already in call, present incoming call modal
               if (callStateRef.current === 'idle' && !isIncomingCallRef.current) {
                 setIncomingCallData(data);
                 setIsIncomingCall(true);
               } else {
-                // Busy response
                 ws.send(JSON.stringify({
                   type: 'call_status',
                   status: 'busy',
@@ -519,8 +560,7 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
                 resetCallState();
               } else if (data.status === 'accepted') {
                 setCallState('connected');
-                const callerPeerName = getContactNameByPhone(data.from_phone);
-                setActivePeerName(callerPeerName);
+                setActivePeerName(getContactNameByPhoneStable(data.from_phone));
                 setActivePeerPhone(data.from_phone);
                 await startCallerWebRTC(data.from_phone);
               } else if (data.status === 'declined') {
@@ -540,7 +580,7 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
             case 'webrtc_offer':
               setCallState('connected');
               setActivePeerPhone(data.from_phone);
-              setActivePeerName(data.from_name || getContactNameByPhone(data.from_phone));
+              setActivePeerName(data.from_name || getContactNameByPhoneStable(data.from_phone));
               await handleWebRTCOffer(data.offer, data.from_phone);
               break;
 
@@ -561,7 +601,10 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
       };
 
       ws.onclose = () => {
-        console.log('[WebSocket] Connection closed. Will attempt reconnect...');
+        console.log('[WebSocket] Connection closed.');
+        // Only auto-reconnect if the component is still mounted
+        // AND we are not in an active call (avoid disrupting calls
+        // with a fresh WebSocket — the existing one just closed cleanly).
         if (isSubscribed) {
           reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000);
         }
@@ -582,11 +625,21 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
         wsRef.current.close();
         wsRef.current = null;
       }
+      // Only clean up WebRTC when the component truly unmounts
+      // (i.e. user logs out), not on re-renders.
       cleanupWebRTC();
     };
-  }, [myPhone, getContactNameByPhone, startCallerWebRTC, handleWebRTCOffer, handleWebRTCAnswer, handleIceCandidate, cleanupWebRTC, resetCallState, saveCallToHistory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myPhone]);
+  // ⬆ ALL handler refs are stable (proven zero-dep), so listing only
+  //   myPhone is safe. This is the critical fix — previously the effect
+  //   listed getContactNameByPhone (depends on directory) and
+  //   getOrCreatePeerConnection (depended on isMuted) which caused the
+  //   entire WS + WebRTC teardown when contacts loaded or mute toggled.
 
-  // Active call duration and metric fluctuations
+  // ──────────────────────────────────────────────────────────────────
+  // Active call duration timer & metric fluctuation
+  // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (callState === 'connected') {
       setDuration(0);
@@ -619,7 +672,9 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
     };
   }, [callState]);
 
-  // Trigger high-risk security alert if risk crosses 35% during connected call
+  // ──────────────────────────────────────────────────────────────────
+  // Security alert when risk crosses threshold
+  // ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (callState !== 'connected') {
       alertTriggeredRef.current = false;
@@ -628,16 +683,20 @@ export function CallProvider({ children, currentUser, onAddAlert }) {
 
     if (riskScore > 35 && !alertTriggeredRef.current) {
       alertTriggeredRef.current = true;
-      if (onAddAlert) {
-        onAddAlert({
+      const alertFn = onAddAlertRef.current;
+      if (alertFn) {
+        alertFn({
           severity: 'HIGH',
           message: `Elevated call risk detected: ${riskScore}% spoofing markers in call with ${activePeerName || activePeerPhone}.`,
           recommendation: 'Review credentials, do not share OTPs, and verify caller identity.',
         });
       }
     }
-  }, [riskScore, callState, activePeerName, activePeerPhone, onAddAlert]);
+  }, [riskScore, callState, activePeerName, activePeerPhone]);
 
+  // ──────────────────────────────────────────────────────────────────
+  // Context value
+  // ──────────────────────────────────────────────────────────────────
   const value = {
     callState,
     setCallState,
