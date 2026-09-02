@@ -187,3 +187,55 @@
 .phone-number-input {
   flex: 1;
 }
+
+/* Email Verification with Blue Button */
+.email-verify-row {
+  display: flex;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.email-input-with-btn {
+  flex: 1;
+}
+
+.verify-email-blue-btn {
+  background-color: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0 1.25rem;
+  border-radius: 8px;
+  border: 1px solid #1d4ed8;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.verify-email-blue-btn:hover:not(:disabled) {
+  background-color: #1d4ed8;
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.4);
+}
+
+.verify-email-blue-btn:active:not(:disabled) {
+  background-color: #1e40af;
+  transform: scale(0.98);
+}
+
+.verify-email-blue-btn:disabled {
+  background-color: rgba(37, 99, 235, 0.4);
+  color: rgba(255, 255, 255, 0.6);
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
+.email-verify-hint-text {
+  font-size: 0.78rem;
+  color: #60a5fa;
+  margin: 0;
+  padding-top: 0.2rem;
+  line-height: 1.3;
+}

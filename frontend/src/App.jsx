@@ -3,6 +3,7 @@ import { NavLink, Route, Routes, Navigate, useNavigate, useLocation } from 'reac
 import { LayoutDashboard, Phone, Clock, ShieldAlert, BarChart3, Settings as SettingsIcon, LogOut, Shield, X } from 'lucide-react';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifySuccess from './pages/VerifySuccess';
 import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
 import Call from './pages/Call';
@@ -39,6 +40,24 @@ function App() {
       setUser(JSON.parse(storedUser));
     }
   }, []);
+
+  // Intercept Supabase email verification redirects (hash/query tokens)
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    if (
+      hash.includes('access_token=') ||
+      hash.includes('type=signup') ||
+      hash.includes('type=magiclink') ||
+      hash.includes('type=email_change') ||
+      search.includes('token_hash=') ||
+      search.includes('code=')
+    ) {
+      if (location.pathname !== '/verify-success') {
+        navigate(`/verify-success${search}${hash}`, { replace: true });
+      }
+    }
+  }, [location, navigate]);
 
   // Fetch alerts and sync profile inputs once user is loaded
   useEffect(() => {
@@ -167,13 +186,13 @@ function App() {
     return user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   };
 
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/';
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/' || location.pathname === '/verify-success';
 
   if (!user && !isAuthPage) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isAuthPage && user) {
+  if (isAuthPage && user && location.pathname !== '/verify-success') {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -344,6 +363,7 @@ function App() {
               <Route path="/" element={<Navigate to="/login" replace />} />
               <Route path="/login" element={<Login onLoginSuccess={handleLoginSuccess} />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/verify-success" element={<VerifySuccess onLoginSuccess={handleLoginSuccess} />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/contacts" element={<Contacts currentUser={user} />} />
               <Route path="/calls" element={<Call currentUser={user} onAddAlert={handleAddAlert} />} />

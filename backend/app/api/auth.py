@@ -9,9 +9,94 @@ from app.services.repository import _client, insert, find_by
 router = APIRouter()
 
 
+class VerificationRequest(BaseModel):
+    email: str
+    name: str | None = None
+    phone: str | None = None
+    redirect_to: str | None = None
+
+
+class ConfirmProfileRequest(BaseModel):
+    id: str
+    email: str
+    name: str | None = None
+    phone: str | None = None
+
+
 def hash_password(password: str) -> str:
     """Hash password using SHA-256 for local fallback mock storage."""
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+@router.post("/send-verification")
+async def send_verification(req: VerificationRequest):
+    email = req.email.strip()
+    if not email or "@" not in email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Valid email address is required"
+        )
+    
+    # Check if already registered in profiles
+    existing = find_by("profiles", "email", email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is already registered. Please sign in instead."
+        )
+        
+    client = _client()
+    redirect_url = req.redirect_to or "http://localhost:5173/verify-success"
+    
+    if client:
+        try:
+            # Use sign_in_with_otp to send a verification link to the email
+            client.auth.sign_in_with_otp({
+                "email": email,
+                "options": {
+                    "email_redirect_to": redirect_url,
+                    "data": {
+                        "name": req.name or "",
+                        "phone": req.phone or ""
+                    }
+                }
+            })
+            return {
+                "message": f"Verification email sent to {email}. Please check your inbox and click the verification link.",
+                "email": email
+            }
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to send verification email: {str(e)}"
+            )
+    else:
+        # Mock mode fallback
+        return {
+            "message": f"Verification email sent to {email} (mock mode).",
+            "email": email
+        }
+
+
+@router.post("/confirm-profile")
+async def confirm_profile(req: ConfirmProfileRequest):
+    existing = find_by("profiles", "id", req.id)
+    if existing:
+        return {"message": "Profile already exists", "profile": existing[0]}
+    
+    existing_by_email = find_by("profiles", "email", req.email)
+    if existing_by_email:
+        return {"message": "Profile already exists", "profile": existing_by_email[0]}
+
+    profile_data = {
+        "id": req.id,
+        "name": req.name or req.email.split("@")[0],
+        "email": req.email,
+        "phone": req.phone or "",
+        "role": "user"
+    }
+    saved = insert("profiles", profile_data)
+    return {"message": "Profile confirmed", "profile": saved}
 
 
 @router.post("/register")

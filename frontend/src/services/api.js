@@ -231,6 +231,48 @@ export async function getUserAlerts(userId) {
   }
 }
 
+/**
+ * Sends email verification via Supabase before registration.
+ */
+export async function sendEmailVerification(email, name = '', phone = '', redirectTo = '') {
+  try {
+    const response = await client.post('/api/auth/send-verification', {
+      email,
+      name,
+      phone,
+      redirect_to: redirectTo,
+    });
+    return response.data;
+  } catch (error) {
+    let errMsg = 'Failed to send verification email';
+    if (error.response?.data?.detail) {
+      errMsg = error.response.data.detail;
+    } else if (error.message) {
+      errMsg = error.message;
+    }
+    console.error('Send verification email failed:', errMsg);
+    throw new Error(errMsg);
+  }
+}
+
+/**
+ * Confirms or initializes user profile upon email verification callback.
+ */
+export async function confirmVerifiedProfile(id, email, name = '', phone = '') {
+  try {
+    const response = await client.post('/api/auth/confirm-profile', {
+      id,
+      email,
+      name,
+      phone,
+    });
+    return response.data;
+  } catch (error) {
+    console.warn('Failed to confirm profile via API:', error.message);
+    return null;
+  }
+}
+
 export default {
   checkHealth,
   createCall,
@@ -244,4 +286,6 @@ export default {
   deleteContact,
   syncGoogleContacts,
   getUserAlerts,
+  sendEmailVerification,
+  confirmVerifiedProfile,
 };

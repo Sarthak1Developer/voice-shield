@@ -1,9 +1,25 @@
--- VoiceShield Supabase Schema with User Sub-Table Partitioning
--- Master tables and individual user sub-tables for all tables except profiles
+-- ====================================================================
+-- VoiceShield: Migration Script for User Sub-Tables Partitioning
+-- ====================================================================
+-- This script segregates all tables (except profiles) into user-based 
+-- sub-tables under each parent table.
+-- Run this in your Supabase Project's SQL Editor (SQL Editor -> New Query -> Run)
+-- ====================================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- 1. Profiles Master Table
+-- Step 1: Backup existing trusted_contacts safely
+CREATE TEMP TABLE IF NOT EXISTS temp_backup_trusted_contacts AS 
+SELECT * FROM trusted_contacts;
+
+-- Step 2: Drop old unpartitioned tables (if not already partitioned)
+DROP TABLE IF EXISTS alerts CASCADE;
+DROP TABLE IF EXISTS call_analysis CASCADE;
+DROP TABLE IF EXISTS calls CASCADE;
+DROP TABLE IF EXISTS speaker_profiles CASCADE;
+DROP TABLE IF EXISTS trusted_contacts CASCADE;
+
+-- Step 3: Ensure profiles master table exists
 CREATE TABLE IF NOT EXISTS profiles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
@@ -13,7 +29,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- 2. Trusted Contacts Table (Partitioned by user_id)
+-- Step 4: Create Partitioned Parent Tables (Partitioned by user_id)
 CREATE TABLE IF NOT EXISTS trusted_contacts (
     id uuid DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -24,7 +40,6 @@ CREATE TABLE IF NOT EXISTS trusted_contacts (
     PRIMARY KEY (id, user_id)
 ) PARTITION BY LIST (user_id);
 
--- 3. Speaker Profiles Table (Partitioned by user_id)
 CREATE TABLE IF NOT EXISTS speaker_profiles (
     id uuid DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -34,7 +49,6 @@ CREATE TABLE IF NOT EXISTS speaker_profiles (
     PRIMARY KEY (id, user_id)
 ) PARTITION BY LIST (user_id);
 
--- 4. Calls Table (Partitioned by user_id)
 CREATE TABLE IF NOT EXISTS calls (
     id uuid DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -47,7 +61,6 @@ CREATE TABLE IF NOT EXISTS calls (
     PRIMARY KEY (id, user_id)
 ) PARTITION BY LIST (user_id);
 
--- 5. Call Analysis Table (Partitioned by user_id)
 CREATE TABLE IF NOT EXISTS call_analysis (
     id uuid DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -61,7 +74,6 @@ CREATE TABLE IF NOT EXISTS call_analysis (
     PRIMARY KEY (id, user_id)
 ) PARTITION BY LIST (user_id);
 
--- 6. Alerts Table (Partitioned by user_id)
 CREATE TABLE IF NOT EXISTS alerts (
     id uuid DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -73,14 +85,38 @@ CREATE TABLE IF NOT EXISTS alerts (
     PRIMARY KEY (id, user_id)
 ) PARTITION BY LIST (user_id);
 
--- Default Partitions
+-- Step 5: Create DEFAULT partition fallbacks
 CREATE TABLE IF NOT EXISTS trusted_contacts_default PARTITION OF trusted_contacts DEFAULT;
 CREATE TABLE IF NOT EXISTS speaker_profiles_default PARTITION OF speaker_profiles DEFAULT;
 CREATE TABLE IF NOT EXISTS calls_default PARTITION OF calls DEFAULT;
 CREATE TABLE IF NOT EXISTS call_analysis_default PARTITION OF call_analysis DEFAULT;
 CREATE TABLE IF NOT EXISTS alerts_default PARTITION OF alerts DEFAULT;
 
--- Trigger Function to create user sub-tables dynamically for every new profile
+-- Step 6: Dynamically create individual sub-tables for all existing users
+DO $$
+DECLARE
+    rec RECORD;
+    user_suffix TEXT;
+BEGIN
+    FOR rec IN SELECT id, name FROM profiles LOOP
+        user_suffix := replace(substr(rec.id::text, 1, 8), '-', '_');
+        
+        EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF trusted_contacts FOR VALUES IN (%L)', 'trusted_contacts_' || user_suffix, rec.id);
+        EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF speaker_profiles FOR VALUES IN (%L)', 'speaker_profiles_' || user_suffix, rec.id);
+        EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF calls FOR VALUES IN (%L)', 'calls_' || user_suffix, rec.id);
+        EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF call_analysis FOR VALUES IN (%L)', 'call_analysis_' || user_suffix, rec.id);
+        EXECUTE format('CREATE TABLE IF NOT EXISTS %I PARTITION OF alerts FOR VALUES IN (%L)', 'alerts_' || user_suffix, rec.id);
+    END LOOP;
+END $$;
+
+-- Step 7: Restore backed up trusted_contacts (PostgreSQL automatically routes into user sub-tables!)
+INSERT INTO trusted_contacts (id, user_id, name, phone, relation, created_at)
+SELECT id, user_id, name, phone, relation, created_at FROM temp_backup_trusted_contacts
+ON CONFLICT (id, user_id) DO NOTHING;
+
+DROP TABLE IF EXISTS temp_backup_trusted_contacts;
+
+-- Step 8: Trigger function to automatically create user sub-tables whenever a new profile registers
 CREATE OR REPLACE FUNCTION create_user_subtables()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -104,7 +140,7 @@ AFTER INSERT ON profiles
 FOR EACH ROW
 EXECUTE FUNCTION create_user_subtables();
 
--- Row Level Security (RLS) configuration for prototype
+-- Step 9: Disable Row Level Security on all tables for seamless API access
 ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
 ALTER TABLE trusted_contacts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE speaker_profiles DISABLE ROW LEVEL SECURITY;

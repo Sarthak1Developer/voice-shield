@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { registerUser } from '../services/api';
+import { registerUser, sendEmailVerification } from '../services/api';
 import './Auth.css';
 
 function Register() {
@@ -10,8 +10,40 @@ function Register() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [emailVerificationSent, setEmailVerificationSent] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const handleVerifyEmail = async () => {
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address first.');
+      return;
+    }
+    setError('');
+    setSuccess('');
+    setVerifyingEmail(true);
+
+    try {
+      const phone = phoneNumber ? `${countryCode} ${phoneNumber.trim()}` : '';
+      // Store pending form inputs so they can be restored upon verification redirect
+      localStorage.setItem('voiceshield_pending_registration', JSON.stringify({
+        name,
+        email,
+        phone,
+        password
+      }));
+
+      const redirectUrl = `${window.location.origin}/verify-success`;
+      const res = await sendEmailVerification(email, name, phone, redirectUrl);
+      setEmailVerificationSent(true);
+      setSuccess(res.message || `Verification link sent to ${email}! Please check your email.`);
+    } catch (err) {
+      setError(err.message || 'Failed to send verification email.');
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,14 +100,32 @@ function Register() {
 
           <div className="form-group">
             <label className="form-label">Email Address</label>
-            <input 
-              type="email" 
-              className="form-input"
-              placeholder="you@example.com" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-            />
+            <div className="email-verify-row">
+              <input 
+                type="email" 
+                className="form-input email-input-with-btn"
+                placeholder="you@example.com" 
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setEmailVerificationSent(false);
+                }}
+                disabled={loading || verifyingEmail}
+              />
+              <button 
+                type="button" 
+                className="verify-email-blue-btn"
+                onClick={handleVerifyEmail}
+                disabled={loading || verifyingEmail || !email.trim()}
+              >
+                {verifyingEmail ? 'Sending...' : emailVerificationSent ? 'Resend' : 'Verify'}
+              </button>
+            </div>
+            {emailVerificationSent && (
+              <p className="email-verify-hint-text">
+                ✓ Verification email sent. Please check your inbox and click the link to verify.
+              </p>
+            )}
           </div>
 
           <div className="form-group">

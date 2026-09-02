@@ -16,6 +16,7 @@ _memory: dict[str, list[dict]] = {
     "call_analysis": [],
     "alerts": [],
     "trusted_contacts": [],
+    "speaker_profiles": [],
 }
 
 

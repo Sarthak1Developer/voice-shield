@@ -9,7 +9,10 @@ router = APIRouter()
 
 @router.post("/")
 async def create_call(call: CallCreate):
-    return insert("calls", call.model_dump())
+    call_data = call.model_dump()
+    if "user_id" not in call_data or not call_data["user_id"]:
+        call_data["user_id"] = call.caller_id
+    return insert("calls", call_data)
 
 
 @router.get("/{call_id}")
@@ -22,14 +25,30 @@ async def get_call(call_id: str):
 
 @router.post("/{call_id}/analysis")
 async def analyze_call(call_id: str, request: AnalysisRequest):
-    if get("calls", call_id) is None:
+    call = get("calls", call_id)
+    if call is None:
         raise HTTPException(status_code=404, detail="Call not found")
+    user_id = call.get("user_id") or call.get("caller_id")
     features = request.model_dump(exclude={"call_id", "timestamp", "features"})
     score = calculate_risk_score(features)
     severity = risk_severity(score)
-    analysis = insert("call_analysis", {"call_id": call_id, "deepfake_score": features["deepfake_score"], "speaker_score": features["speaker_similarity"], "prosody_score": features["prosody_score"], "context_score": features["context_score"], "risk_score": score})
+    analysis = insert("call_analysis", {
+        "user_id": user_id,
+        "call_id": call_id,
+        "deepfake_score": features["deepfake_score"],
+        "speaker_score": features["speaker_similarity"],
+        "prosody_score": features["prosody_score"],
+        "context_score": features["context_score"],
+        "risk_score": score
+    })
     if severity != "LOW":
-        insert("alerts", {"call_id": call_id, "severity": severity, "message": "Elevated call risk detected", "recommendation": "Review this call"})
+        insert("alerts", {
+            "user_id": user_id,
+            "call_id": call_id,
+            "severity": severity,
+            "message": "Elevated call risk detected",
+            "recommendation": "Review this call"
+        })
     return {"deepfake_score": features["deepfake_score"], "speaker_score": features["speaker_similarity"], "prosody_score": features["prosody_score"], "context_score": features["context_score"], "risk_score": score, "severity": severity, "analysis": analysis}
 
 

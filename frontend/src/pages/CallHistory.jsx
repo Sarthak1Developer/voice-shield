@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Phone } from 'lucide-react';
+import { useCall } from '../context/CallContext';
 import './CallHistory.css';
 
 const MOCK_HISTORY = [
@@ -11,6 +13,8 @@ const MOCK_HISTORY = [
 ];
 
 function CallHistory() {
+  const navigate = useNavigate();
+  const { initiateCall } = useCall();
   const [searchTerm, setSearchTerm] = useState('');
   const [riskFilter, setRiskFilter] = useState('all');
   const [history, setHistory] = useState(MOCK_HISTORY);
@@ -45,6 +49,16 @@ function CallHistory() {
 
     return matchesSearch && matchesRisk;
   });
+
+  const handleEstablishCall = (item) => {
+    const phone = item.phone?.trim();
+    if (!phone || phone.toLowerCase() === 'unknown') {
+      initiateCall('000', item.name || 'Demo Session');
+    } else {
+      initiateCall(phone, item.name);
+    }
+    navigate('/calls');
+  };
 
   return (
     <section className="history-page-container">
@@ -96,7 +110,17 @@ function CallHistory() {
                 filteredHistory.map((item) => (
                   <tr key={item.id} className="history-row-item">
                     <td className="td-caller td-left">
-                      <span className="caller-name-span">{item.name}</span>
+                      <div className="caller-name-row">
+                        <span className="caller-name-span">{item.name}</span>
+                        <button
+                          type="button"
+                          className="call-again-btn"
+                          onClick={() => handleEstablishCall(item)}
+                          title={`Call ${item.name} again`}
+                        >
+                          <Phone size={13} className="call-again-icon" />
+                        </button>
+                      </div>
                       <span className="caller-phone-span">{item.phone}</span>
                     </td>
                     <td className="td-time">{item.time}</td>
