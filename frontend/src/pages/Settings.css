@@ -228,3 +228,10 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 520px) {
+  .settings-panel {
+    padding: 1.25rem 1rem;
+    border-radius: 14px;
+  }
+}

@@ -1095,3 +1095,18 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 640px) {
+  .call-lobby-card, .active-call-main-card, .active-call-sidebar-card {
+    padding: 1.25rem 1rem;
+    border-radius: 14px;
+  }
+  .active-call-controls-row {
+    gap: 0.85rem;
+  }
+  .control-btn svg {
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+  }
+}

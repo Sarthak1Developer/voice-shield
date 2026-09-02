@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Phone, Clock, ShieldAlert, BarChart3, Settings as SettingsIcon, LogOut, Shield, X } from 'lucide-react';
+import { LayoutDashboard, Phone, Clock, ShieldAlert, BarChart3, Settings as SettingsIcon, LogOut, Shield, X, Menu } from 'lucide-react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import VerifySuccess from './pages/VerifySuccess';
@@ -24,6 +24,7 @@ function App() {
   const [alerts, setAlerts] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Profile edit inputs
   const [profileName, setProfileName] = useState('');
@@ -58,6 +59,11 @@ function App() {
       }
     }
   }, [location, navigate]);
+
+  // Close mobile drawer on route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   // Fetch alerts and sync profile inputs once user is loaded
   useEffect(() => {
@@ -211,85 +217,113 @@ function App() {
 
       <div className="app-shell">
         {!isAuthPage && (
-          <aside className="app-sidebar">
-            <div className="sidebar-brand">
-              <div className="brand-logo-container">
-                <span className="brand-logo-letter">V</span>
-              </div>
-              <div className="brand-text">
-                <h1 className="brand-name">VoiceShield</h1>
-                <p className="brand-tagline">AI CALL DEFENSE</p>
-              </div>
-            </div>
+          <>
+            {/* Backdrop for mobile drawer */}
+            <div 
+              className={`sidebar-backdrop ${mobileMenuOpen ? 'active' : ''}`}
+              onClick={() => setMobileMenuOpen(false)}
+              aria-hidden="true"
+            />
 
-            <nav className="sidebar-nav">
-              <NavLink to="/dashboard" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                <LayoutDashboard size={18} />
-                <span>Dashboard</span>
-              </NavLink>
-              <NavLink to="/calls" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                <Phone size={18} />
-                <span>Live Call</span>
-                <span className="nav-dot-active" />
-              </NavLink>
-              <NavLink to="/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                <Clock size={18} />
-                <span>Call History</span>
-              </NavLink>
-              <NavLink to="/contacts" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                <Shield size={18} />
-                <span>Trusted Contacts</span>
-              </NavLink>
-              <NavLink to="/analytics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                <BarChart3 size={18} />
-                <span>Threat Analytics</span>
-              </NavLink>
-              <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                <SettingsIcon size={18} />
-                <span>Settings</span>
-              </NavLink>
-            </nav>
-
-            <div className="sidebar-footer">
-              <div className="protection-card">
-                <div className="protection-card-header">
-                  <span className="pulsing-green-dot" />
-                  <span className="protection-title">Protection Active</span>
+            <aside className={`app-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+              <div className="sidebar-brand">
+                <div className="brand-logo-container">
+                  <span className="brand-logo-letter">V</span>
                 </div>
-                <p className="protection-subtext">Realtime monitoring ON</p>
+                <div className="brand-text">
+                  <h1 className="brand-name">VoiceShield</h1>
+                  <p className="brand-tagline">AI CALL DEFENSE</p>
+                </div>
+                <button 
+                  className="sidebar-close-btn"
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-label="Close navigation menu"
+                >
+                  <X size={20} />
+                </button>
               </div>
-              
-              <button className="logout-btn" onClick={handleLogout}>
-                <LogOut size={16} />
-                <span>Log Out</span>
-              </button>
-              <div className="prototype-footer">VoiceShield Prototype - v0.1</div>
-            </div>
-          </aside>
+
+              <nav className="sidebar-nav">
+                <NavLink to="/dashboard" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <LayoutDashboard size={18} />
+                  <span>Dashboard</span>
+                </NavLink>
+                <NavLink to="/calls" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <Phone size={18} />
+                  <span>Live Call</span>
+                  <span className="nav-dot-active" />
+                </NavLink>
+                <NavLink to="/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <Clock size={18} />
+                  <span>Call History</span>
+                </NavLink>
+                <NavLink to="/contacts" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <Shield size={18} />
+                  <span>Trusted Contacts</span>
+                </NavLink>
+                <NavLink to="/analytics" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <BarChart3 size={18} />
+                  <span>Threat Analytics</span>
+                </NavLink>
+                <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setMobileMenuOpen(false)}>
+                  <SettingsIcon size={18} />
+                  <span>Settings</span>
+                </NavLink>
+              </nav>
+
+              <div className="sidebar-footer">
+                <div className="protection-card">
+                  <div className="protection-card-header">
+                    <span className="pulsing-green-dot" />
+                    <span className="protection-title">Protection Active</span>
+                  </div>
+                  <p className="protection-subtext">Realtime monitoring ON</p>
+                </div>
+                
+                <button className="logout-btn" onClick={handleLogout}>
+                  <LogOut size={16} />
+                  <span>Log Out</span>
+                </button>
+                <div className="prototype-footer">VoiceShield Prototype - v0.1</div>
+              </div>
+            </aside>
+          </>
         )}
 
         <div className="app-main-content">
           {!isAuthPage && (
             <header className="content-header">
               <div className="header-left">
-                <p className="header-eyebrow">PERSONAL SECURITY CONSOLE</p>
-                <h2 className="header-title">{getPageTitle()}</h2>
+                <button 
+                  className="mobile-menu-btn" 
+                  onClick={() => setMobileMenuOpen(prev => !prev)} 
+                  aria-label="Toggle navigation menu"
+                >
+                  <Menu size={22} />
+                </button>
+                <div className="header-titles">
+                  <p className="header-eyebrow">PERSONAL SECURITY CONSOLE</p>
+                  <h2 className="header-title">{getPageTitle()}</h2>
+                </div>
               </div>
               <div className="header-right">
                 {backendOnline === true ? (
-                  <div className="connection-status online">
+                  <div className="connection-status online" title="Backend connected">
                     <span className="status-dot" />
-                    <span>Backend connected</span>
+                    <span className="status-text">Backend connected</span>
+                    <span className="status-text-mobile">Connected</span>
                   </div>
                 ) : backendOnline === false ? (
-                  <div className="connection-status offline">
+                  <div className="connection-status offline" title="Backend disconnected">
                     <span className="status-dot" />
-                    <span>Backend disconnected</span>
+                    <span className="status-text">Backend disconnected</span>
+                    <span className="status-text-mobile">Offline</span>
                   </div>
                 ) : (
-                  <div className="connection-status checking">
+                  <div className="connection-status checking" title="Checking backend connection">
                     <span className="status-dot" />
-                    <span>Checking...</span>
+                    <span className="status-text">Checking...</span>
+                    <span className="status-text-mobile">Checking</span>
                   </div>
                 )}
 
@@ -427,6 +461,39 @@ function App() {
               </form>
             </div>
           </div>
+        )}
+
+        {/* Mobile Bottom Navigation Bar */}
+        {!isAuthPage && (
+          <nav className="mobile-bottom-nav">
+            <NavLink to="/dashboard" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+              <LayoutDashboard size={19} />
+              <span>Dashboard</span>
+            </NavLink>
+            <NavLink to="/calls" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+              <div className="mobile-nav-icon-wrapper">
+                <Phone size={19} />
+                <span className="mobile-nav-dot" />
+              </div>
+              <span>Live Call</span>
+            </NavLink>
+            <NavLink to="/history" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+              <Clock size={19} />
+              <span>History</span>
+            </NavLink>
+            <NavLink to="/contacts" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+              <Shield size={19} />
+              <span>Contacts</span>
+            </NavLink>
+            <NavLink to="/analytics" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+              <BarChart3 size={19} />
+              <span>Analytics</span>
+            </NavLink>
+            <NavLink to="/settings" className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}>
+              <SettingsIcon size={19} />
+              <span>Settings</span>
+            </NavLink>
+          </nav>
         )}
       </div>
     </CallProvider>
