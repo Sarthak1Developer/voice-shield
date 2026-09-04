@@ -30,7 +30,11 @@ def _client() -> Client | None:
         url = url[:-9]
     elif url.endswith("/rest/v1"):
         url = url[:-8]
-    return create_client(url, key)
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        print(f"Failed to create Supabase client: {e}")
+        return None
 
 
 def insert(table: str, values: dict) -> dict:

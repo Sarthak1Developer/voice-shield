@@ -7,7 +7,7 @@ if (API_BASE.endsWith('/')) {
 
 const client = axios.create({
   baseURL: API_BASE,
-  timeout: 10000,
+  timeout: 20000,
 });
 
 /**
@@ -273,6 +273,28 @@ export async function confirmVerifiedProfile(id, email, name = '', phone = '') {
   }
 }
 
+/**
+ * Verifies a Google OAuth session with the backend and creates/returns user profile.
+ */
+export async function googleSignIn(accessToken, providerToken = null) {
+  try {
+    const response = await client.post('/api/auth/google', {
+      access_token: accessToken,
+      provider_token: providerToken,
+    });
+    return response.data;
+  } catch (error) {
+    let errMsg = 'Google sign-in failed';
+    if (error.response?.data?.detail) {
+      errMsg = error.response.data.detail;
+    } else if (error.message) {
+      errMsg = error.message;
+    }
+    console.error('Google sign-in failed:', errMsg);
+    throw new Error(errMsg);
+  }
+}
+
 export default {
   checkHealth,
   createCall,
@@ -288,4 +310,5 @@ export default {
   getUserAlerts,
   sendEmailVerification,
   confirmVerifiedProfile,
+  googleSignIn,
 };

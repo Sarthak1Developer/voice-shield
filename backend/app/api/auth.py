@@ -5,6 +5,7 @@ import hashlib
 
 from app.models.schemas import RegisterRequest, LoginRequest
 from app.services.repository import _client, insert, find_by
+from config import settings
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def send_verification(req: VerificationRequest):
         )
         
     client = _client()
-    redirect_url = req.redirect_to or "http://localhost:5173/verify-success"
+    redirect_url = req.redirect_to or f"{settings.frontend_url}/verify-success"
     
     if client:
         try:
@@ -242,3 +243,70 @@ async def login(req: LoginRequest):
             }
         }
 
+
+class GoogleAuthRequest(BaseModel):
+    access_token: str
+    provider_token: str | None = None
+
+
+@router.post("/google")
+async def google_auth(req: GoogleAuthRequest):
+    """Handle Google OAuth sign-in. The frontend sends the Supabase session access token
+    after completing OAuth via Supabase's signInWithOAuth. We verify the token and
+    ensure a profile exists."""
+    client = _client()
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Supabase client not configured"
+        )
+    
+    try:
+        # Verify the access token with Supabase
+        user_response = client.auth.get_user(req.access_token)
+        user = user_response.user
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid access token"
+            )
+        
+        user_id = str(user.id)
+        email = user.email or ""
+        meta = user.user_metadata or {}
+        name = meta.get("full_name") or meta.get("name") or email.split("@")[0]
+        phone = meta.get("phone") or ""
+        avatar_url = meta.get("avatar_url") or ""
+        
+        # Ensure profile exists in our profiles table
+        existing = find_by("profiles", "id", user_id)
+        if not existing:
+            existing_by_email = find_by("profiles", "email", email)
+            if not existing_by_email:
+                profile_data = {
+                    "id": user_id,
+                    "name": name,
+                    "email": email,
+                    "phone": phone,
+                    "role": "user"
+                }
+                insert("profiles", profile_data)
+        
+        return {
+            "message": "Google sign-in successful",
+            "user": {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "avatar_url": avatar_url
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Google authentication failed: {str(e)}"
+        )

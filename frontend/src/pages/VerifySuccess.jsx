@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { confirmVerifiedProfile } from '../services/api';
+import { confirmVerifiedProfile, googleSignIn } from '../services/api';
+import { supabase } from '../services/supabaseClient';
 
 function parseJwt(token) {
   try {
@@ -20,58 +21,97 @@ function parseJwt(token) {
 
 function VerifySuccess({ onLoginSuccess }) {
   const navigate = useNavigate();
-  const [redirecting, setRedirecting] = useState(true);
+  const [statusText, setStatusText] = useState('Verifying your account...');
 
   useEffect(() => {
     async function processVerification() {
       try {
-        // 1. Check URL hash for access token (standard Supabase redirect format)
-        const hash = window.location.hash.substring(1);
-        const hashParams = new URLSearchParams(hash);
-        const searchParams = new URLSearchParams(window.location.search);
-
-        const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
-        const pendingDataStr = localStorage.getItem('voiceshield_pending_registration');
-        const pendingData = pendingDataStr ? JSON.parse(pendingDataStr) : null;
-
+        // 1. Try to get a Supabase session (works for both OAuth and magic link)
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
         let userId = '';
         let email = '';
         let name = '';
         let phone = '';
+        let accessToken = '';
 
-        if (accessToken) {
-          const payload = parseJwt(accessToken);
-          if (payload) {
-            userId = payload.sub || '';
-            email = payload.email || '';
-            const meta = payload.user_metadata || {};
-            name = meta.name || '';
-            phone = meta.phone || '';
+        if (sessionData?.session) {
+          // Supabase OAuth session exists (Google sign-in or magic link)
+          const session = sessionData.session;
+          const user = session.user;
+          accessToken = session.access_token;
+          
+          userId = user.id || '';
+          email = user.email || '';
+          const meta = user.user_metadata || {};
+          name = meta.full_name || meta.name || '';
+          phone = meta.phone || '';
+
+          setStatusText('Google sign-in successful! Setting up your account...');
+
+          // Confirm profile in backend
+          try {
+            const result = await googleSignIn(accessToken, session.provider_token);
+            if (result?.user) {
+              name = result.user.name || name;
+              email = result.user.email || email;
+              phone = result.user.phone || phone;
+            }
+          } catch (err) {
+            console.warn('Backend Google auth sync notice:', err);
+            // Still try confirm-profile as fallback
+            try {
+              await confirmVerifiedProfile(userId, email, name, phone);
+            } catch (e) {
+              console.warn('Profile confirm fallback notice:', e);
+            }
           }
-        }
+        } else {
+          // 2. Fallback: Check URL hash for access token (standard Supabase redirect format)
+          const hash = window.location.hash.substring(1);
+          const hashParams = new URLSearchParams(hash);
+          const searchParams = new URLSearchParams(window.location.search);
 
-        // Fallback to pending registration details if metadata was empty
-        if (pendingData) {
-          if (!email && pendingData.email) email = pendingData.email;
-          if (!name && pendingData.name) name = pendingData.name;
-          if (!phone && pendingData.phone) phone = pendingData.phone;
-        }
+          accessToken = hashParams.get('access_token') || searchParams.get('access_token') || '';
+          const pendingDataStr = localStorage.getItem('voiceshield_pending_registration');
+          const pendingData = pendingDataStr ? JSON.parse(pendingDataStr) : null;
 
-        if (!userId) {
-          userId = pendingData?.id || `user_${Date.now()}`;
-        }
-        if (!email) {
-          email = pendingData?.email || 'user@voiceshield.internal';
-        }
-        if (!name) {
-          name = pendingData?.name || email.split('@')[0];
-        }
+          if (accessToken) {
+            const payload = parseJwt(accessToken);
+            if (payload) {
+              userId = payload.sub || '';
+              email = payload.email || '';
+              const meta = payload.user_metadata || {};
+              name = meta.name || '';
+              phone = meta.phone || '';
+            }
+          }
 
-        // Ensure user profile is registered/confirmed in backend & database
-        try {
-          await confirmVerifiedProfile(userId, email, name, phone);
-        } catch (err) {
-          console.warn('Profile sync notice:', err);
+          // Fallback to pending registration details if metadata was empty
+          if (pendingData) {
+            if (!email && pendingData.email) email = pendingData.email;
+            if (!name && pendingData.name) name = pendingData.name;
+            if (!phone && pendingData.phone) phone = pendingData.phone;
+          }
+
+          if (!userId) {
+            userId = pendingData?.id || `user_${Date.now()}`;
+          }
+          if (!email) {
+            email = pendingData?.email || 'user@voiceshield.internal';
+          }
+          if (!name) {
+            name = pendingData?.name || email.split('@')[0];
+          }
+
+          setStatusText('Email verified! Redirecting...');
+
+          // Ensure user profile is registered/confirmed in backend & database
+          try {
+            await confirmVerifiedProfile(userId, email, name, phone);
+          } catch (err) {
+            console.warn('Profile sync notice:', err);
+          }
         }
 
         const userData = {
@@ -98,6 +138,7 @@ function VerifySuccess({ onLoginSuccess }) {
         return () => clearTimeout(timer);
       } catch (err) {
         console.error('Error handling verification callback:', err);
+        setStatusText('Something went wrong. Redirecting...');
         const timer = setTimeout(() => {
           navigate('/dashboard', { replace: true });
         }, 2000);
@@ -140,7 +181,7 @@ function VerifySuccess({ onLoginSuccess }) {
           margin: 0,
         }}
       >
-        You have successfully registered we are redirecting you to the original site
+        {statusText}
       </h1>
     </div>
   );

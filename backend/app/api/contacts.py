@@ -69,11 +69,24 @@ async def sync_google_contacts(user_id: str, req: GoogleSyncRequest):
     # If the token is real, try fetching using Google People API
     if req.token and not req.token.startswith("mock_"):
         try:
-            # Call Google People API connections endpoint
             headers = {"Authorization": f"Bearer {req.token}"}
-            url = "https://people.googleapis.com/v1/people/me/connections?personFields=names,phoneNumbers,relations"
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
+            base_url = "https://people.googleapis.com/v1/people/me/connections"
+            params = {
+                "personFields": "names,phoneNumbers,relations",
+                "pageSize": "100"
+            }
+            
+            while True:
+                response = requests.get(base_url, headers=headers, params=params, timeout=15)
+                if response.status_code == 401:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Google access token expired or invalid. Please re-authenticate with Google."
+                    )
+                if response.status_code != 200:
+                    print(f"Google People API error: {response.status_code} - {response.text}")
+                    break
+                    
                 data = response.json()
                 connections = data.get("connections", [])
                 for person in connections:
@@ -91,21 +104,35 @@ async def sync_google_contacts(user_id: str, req: GoogleSyncRequest):
                             "phone": phone,
                             "relation": relation.capitalize()
                         })
+                    elif names:
+                        # Include contacts even without phone numbers
+                        name = names[0].get("displayName", "Unknown")
+                        imported_contacts.append({
+                            "name": name,
+                            "phone": "",
+                            "relation": "Friend"
+                        })
+                
+                next_page = data.get("nextPageToken")
+                if not next_page:
+                    break
+                params["pageToken"] = next_page
+                
+        except HTTPException:
+            raise
         except Exception as e:
-            # Log error and fall back to mock generation so sync never crashes the prototype
-            print(f"Failed to fetch from real Google API: {e}")
+            print(f"Failed to fetch from Google People API: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch Google contacts: {str(e)}"
+            )
             
-    # Mock fallback contacts customized based on email/user if no real contacts imported
+    # If no real contacts were imported, return an informative error
     if not imported_contacts:
-        prefix = req.google_email.split("@")[0].capitalize()
-        imported_contacts = [
-            {"name": f"{prefix}'s Father", "phone": "+91 98989 12345", "relation": "Family"},
-            {"name": f"{prefix}'s Sister", "phone": "+91 98888 54321", "relation": "Family"},
-            {"name": "Aarav Sharma", "phone": "+91 97777 66655", "relation": "Friend"},
-            {"name": "Riya Patel", "phone": "+91 96666 44433", "relation": "Friend"},
-            {"name": "Dr. Kapoor", "phone": "+91 95555 22211", "relation": "Doctor"},
-            {"name": "Office Desk", "phone": "+91 94444 11100", "relation": "Work"}
-        ]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not fetch contacts from Google. Please ensure you have granted contacts permission and try again. If the problem persists, re-authenticate with Google."
+        )
         
     saved_contacts = []
     try:
