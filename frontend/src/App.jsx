@@ -80,6 +80,15 @@ function App() {
       setProfileName(user.name || '');
       setProfileEmail(user.email || '');
       setProfilePhone(user.phone || '');
+
+      // Automatically open the profile modal if phone number is not set yet
+      const shouldPromptPhone = localStorage.getItem('voiceshield_prompt_phone') === 'true' || 
+                                (!user.phone && !localStorage.getItem('voiceshield_phone_prompted'));
+      if (shouldPromptPhone) {
+        localStorage.removeItem('voiceshield_prompt_phone');
+        localStorage.setItem('voiceshield_phone_prompted', 'true');
+        setShowProfileModal(true);
+      }
     }
   }, [user]);
 
@@ -419,6 +428,23 @@ function App() {
                   <X size={18} />
                 </button>
               </div>
+              {!user?.phone && (
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(0, 240, 194, 0.1)',
+                  border: '1px solid rgba(0, 240, 194, 0.3)',
+                  color: 'var(--color-accent, #00f0c2)',
+                  fontSize: '0.82rem',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>📱</span>
+                  <span>Please add your mobile number to complete your profile setup.</span>
+                </div>
+              )}
               {profileError && <div className="modal-error-alert">{profileError}</div>}
               {profileSuccess && <div className="modal-success-alert">{profileSuccess}</div>}
               

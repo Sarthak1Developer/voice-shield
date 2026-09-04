@@ -126,6 +126,10 @@ function VerifySuccess({ onLoginSuccess }) {
         localStorage.setItem('voiceshield_user', JSON.stringify(userData));
         localStorage.removeItem('voiceshield_pending_registration');
 
+        if (!phone || phone.trim() === '') {
+          localStorage.setItem('voiceshield_prompt_phone', 'true');
+        }
+
         if (onLoginSuccess) {
           onLoginSuccess(userData);
         }
