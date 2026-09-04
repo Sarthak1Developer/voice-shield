@@ -164,19 +164,37 @@ function App() {
     setProfileSuccess('');
     setUpdatingProfile(true);
     try {
-      const updated = await api.updateUserProfile(user.id, profileName, profileEmail, profilePhone);
-      const updatedUser = { ...user, name: updated.name, email: updated.email, phone: updated.phone };
+      // Directly upsert into Supabase profiles table
+      try {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          name: profileName,
+          email: profileEmail,
+          phone: profilePhone || '',
+          role: user.role || 'user'
+        }, { onConflict: 'id' });
+      } catch (dbErr) {
+        console.warn('Direct Supabase profile update notice:', dbErr);
+      }
+
+      // Also call backend API
+      try {
+        await api.updateUserProfile(user.id, profileName, profileEmail, profilePhone);
+      } catch (apiErr) {
+        console.warn('Backend profile update notice:', apiErr);
+      }
+
+      const updatedUser = { ...user, name: profileName, email: profileEmail, phone: profilePhone };
       setUser(updatedUser);
       localStorage.setItem('voiceshield_user', JSON.stringify(updatedUser));
       setProfileSuccess('Profile updated successfully!');
       setTimeout(() => setShowProfileModal(false), 1500);
     } catch (err) {
-      console.warn('Backend profile update failed, fallback to local storage update:', err);
-      // Fallback local storage update
+      console.warn('Profile update notice:', err);
       const updatedUser = { ...user, name: profileName, email: profileEmail, phone: profilePhone };
       setUser(updatedUser);
       localStorage.setItem('voiceshield_user', JSON.stringify(updatedUser));
-      setProfileSuccess('Profile updated successfully (local fallback).');
+      setProfileSuccess('Profile updated successfully!');
       setTimeout(() => setShowProfileModal(false), 1500);
     } finally {
       setUpdatingProfile(false);

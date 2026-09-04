@@ -47,9 +47,20 @@ function VerifySuccess({ onLoginSuccess }) {
           name = meta.full_name || meta.name || '';
           phone = meta.phone || '';
 
-          setStatusText('Google sign-in successful! Setting up your account...');
+          // Directly ensure profile exists in Supabase profiles table
+          try {
+            await supabase.from('profiles').upsert({
+              id: userId,
+              name: name || email.split('@')[0],
+              email: email,
+              phone: phone || '',
+              role: 'user'
+            }, { onConflict: 'id' });
+          } catch (dbErr) {
+            console.warn('Direct Supabase profile upsert notice:', dbErr);
+          }
 
-          // Confirm profile in backend
+          // Also notify backend
           try {
             const result = await googleSignIn(accessToken, session.provider_token);
             if (result?.user) {
@@ -59,7 +70,6 @@ function VerifySuccess({ onLoginSuccess }) {
             }
           } catch (err) {
             console.warn('Backend Google auth sync notice:', err);
-            // Still try confirm-profile as fallback
             try {
               await confirmVerifiedProfile(userId, email, name, phone);
             } catch (e) {
