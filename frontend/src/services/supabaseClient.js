@@ -1,11 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 
 // Supabase client for frontend OAuth operations (Google Sign-In)
-// This uses the same project as the backend but from the frontend
 const supabaseUrl = 'https://qxengrvbkxxdxdrpzbng.supabase.co'
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4ZW5ncnZia3h4ZHhkcnB6Ym5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2NTc3MjEsImV4cCI6MjEwMzIzMzcyMX0.rBCyKY8Y4hoQNkFiNohFEt9iJ6IHeOFzK012pUD68eM'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,  // Critical: auto-detect OAuth hash fragments
+    flowType: 'implicit',      // Use implicit flow so tokens come back in URL hash
+  },
+})
 
 /**
  * Initiates Google OAuth sign-in via Supabase.
@@ -32,6 +38,7 @@ export async function signInWithGoogle() {
 
 /**
  * Gets the current Supabase session (used after OAuth redirect).
+ * Tries multiple methods to establish the session.
  */
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession()
