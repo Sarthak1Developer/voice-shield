@@ -8,9 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    // We handle the URL hash/code manually in VerifySuccess.jsx
-    // This prevents Supabase from consuming the hash before our code reads it
-    detectSessionInUrl: false,
+    detectSessionInUrl: true,
   },
 })
 
@@ -23,6 +21,10 @@ export async function signInWithGoogle() {
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/verify-success`,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
     },
   })
 
