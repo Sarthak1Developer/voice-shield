@@ -35,6 +35,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sagar.voice_shield.VoiceShieldApp
 import com.sagar.voice_shield.ui.theme.*
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+
 val VsTealAccent = Color(0xFF00FFB2)
 val VsDarkCardBg = Color(0xFF131720)
 val VsInputFieldBg = Color(0xFF1B202C)
@@ -58,9 +64,42 @@ fun LoginScreen(
     onNavigateToRegister: () -> Unit
 ) {
     val context = LocalContext.current
-    val container = (context.applicationContext as VoiceShieldApp).appContainer
-    val viewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory(container.authRepository, container.preferencesManager))
+    val appContainer = (context.applicationContext as VoiceShieldApp).appContainer
+    val viewModel: AuthViewModel = viewModel(
+        factory = AuthViewModel.Factory(appContainer.authRepository, appContainer.preferencesManager)
+    )
 
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestProfile()
+            .build()
+    }
+    val googleSignInClient = remember {
+        GoogleSignIn.getClient(context, gso)
+    }
+    val googleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            if (account != null) {
+                val email = account.email ?: "google.user@voiceshield.app"
+                val name = account.displayName ?: "Google User"
+                viewModel.loginWithGoogleAccount(
+                    email = email,
+                    name = name,
+                    id = account.id,
+                    idToken = account.idToken
+                )
+            } else {
+                viewModel.loginWithGoogle()
+            }
+        } catch (e: Exception) {
+            viewModel.loginWithGoogle()
+        }
+    }
     val uiState by viewModel.uiState.collectAsState()
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -266,7 +305,7 @@ fun LoginScreen(
 
                 // Continue with Google Button
                 OutlinedButton(
-                    onClick = { viewModel.loginWithGoogle() },
+                    onClick = { googleLauncher.launch(googleSignInClient.signInIntent) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),

@@ -36,6 +36,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sagar.voice_shield.VoiceShieldApp
 import com.sagar.voice_shield.ui.theme.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 
 @Composable
 fun RegisterScreen(
@@ -45,6 +50,38 @@ fun RegisterScreen(
     val context = LocalContext.current
     val container = (context.applicationContext as VoiceShieldApp).appContainer
     val viewModel: AuthViewModel = viewModel(factory = AuthViewModel.Factory(container.authRepository, container.preferencesManager))
+
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestProfile()
+            .build()
+    }
+    val googleSignInClient = remember {
+        GoogleSignIn.getClient(context, gso)
+    }
+    val googleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            if (account != null) {
+                val email = account.email ?: "google.user@voiceshield.app"
+                val name = account.displayName ?: "Google User"
+                viewModel.loginWithGoogleAccount(
+                    email = email,
+                    name = name,
+                    id = account.id,
+                    idToken = account.idToken
+                )
+            } else {
+                viewModel.loginWithGoogle()
+            }
+        } catch (e: Exception) {
+            viewModel.loginWithGoogle()
+        }
+    }
 
     val uiState by viewModel.uiState.collectAsState()
     val verificationStatus by viewModel.verificationStatus.collectAsState()
@@ -139,7 +176,7 @@ fun RegisterScreen(
 
                 // Continue with Google Button at the top (Matches Image 2)
                 OutlinedButton(
-                    onClick = { viewModel.loginWithGoogle() },
+                    onClick = { googleLauncher.launch(googleSignInClient.signInIntent) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),

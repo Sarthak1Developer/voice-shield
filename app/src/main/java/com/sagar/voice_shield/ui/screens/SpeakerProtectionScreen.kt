@@ -1,11 +1,14 @@
 package com.sagar.voice_shield.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,22 +29,89 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.sagar.voice_shield.VoiceShieldApp
+import com.sagar.voice_shield.service.AudioAnalysisService
+import com.sagar.voice_shield.service.FloatingOverlayService
 import com.sagar.voice_shield.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun SpeakerProtectionScreen(navController: NavController) {
     val context = LocalContext.current
-    var isProtectionEnabled by remember { mutableStateOf(false) }
+    val appContainer = (context.applicationContext as VoiceShieldApp).appContainer
+    val preferencesManager = appContainer.preferencesManager
+    val scope = rememberCoroutineScope()
+
+    val savedProtectionEnabled by preferencesManager.speakerProtectionEnabled.collectAsState(initial = false)
+    val isServiceRunning by AudioAnalysisService.isRunning.collectAsState()
+
     var hasMicPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+    }
+    var hasOverlayPermission by remember {
+        mutableStateOf(Settings.canDrawOverlays(context))
+    }
+
+    // Periodically re-check overlay permission when user returns to the app
+    DisposableEffect(Unit) {
+        hasOverlayPermission = Settings.canDrawOverlays(context)
+        hasMicPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        onDispose {}
+    }
+
+    fun startProtectionServices() {
+        try {
+            val audioIntent = Intent(context, AudioAnalysisService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(audioIntent)
+            } else {
+                context.startService(audioIntent)
+            }
+
+            if (Settings.canDrawOverlays(context)) {
+                context.startService(Intent(context, FloatingOverlayService::class.java))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun stopProtectionServices() {
+        try {
+            context.stopService(Intent(context, AudioAnalysisService::class.java))
+            context.stopService(Intent(context, FloatingOverlayService::class.java))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    val overlayLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        hasOverlayPermission = Settings.canDrawOverlays(context)
+        if (hasOverlayPermission && hasMicPermission) {
+            scope.launch { preferencesManager.setSpeakerProtection(true) }
+            startProtectionServices()
+        }
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasMicPermission = granted
-        if (granted) isProtectionEnabled = true
+        if (granted) {
+            if (!Settings.canDrawOverlays(context)) {
+                overlayLauncher.launch(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                )
+            } else {
+                scope.launch { preferencesManager.setSpeakerProtection(true) }
+                startProtectionServices()
+            }
+        }
     }
+
+    val isProtectionActive = savedProtectionEnabled || isServiceRunning
 
     Column(
         modifier = Modifier.fillMaxSize().background(VsBackground)
@@ -65,27 +135,37 @@ fun SpeakerProtectionScreen(navController: NavController) {
             Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     modifier = Modifier.size(80.dp).clip(CircleShape)
-                        .background(if (isProtectionEnabled) Brush.radialGradient(listOf(VsSecondary.copy(alpha = 0.3f), Color.Transparent))
+                        .background(if (isProtectionActive) Brush.radialGradient(listOf(VsSecondary.copy(alpha = 0.3f), Color.Transparent))
                         else Brush.radialGradient(listOf(VsSurfaceContainerHigh, Color.Transparent))),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.SpeakerPhone, null, tint = if (isProtectionEnabled) VsSecondary else VsOnSurfaceVariant, modifier = Modifier.size(40.dp))
+                    Icon(Icons.Filled.SpeakerPhone, null, tint = if (isProtectionActive) VsSecondary else VsOnSurfaceVariant, modifier = Modifier.size(40.dp))
                 }
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    if (isProtectionEnabled) "Protection Active" else "Protection Disabled",
+                    if (isProtectionActive) "Protection Active" else "Protection Disabled",
                     style = MaterialTheme.typography.headlineMedium,
-                    color = if (isProtectionEnabled) VsSecondary else VsOnSurfaceVariant, fontWeight = FontWeight.Bold
+                    color = if (isProtectionActive) VsSecondary else VsOnSurfaceVariant, fontWeight = FontWeight.Bold
                 )
                 Text("Acoustic Call Analysis Mode", style = MaterialTheme.typography.bodyMedium, color = VsOnSurfaceVariant)
                 Spacer(Modifier.height(20.dp))
                 Switch(
-                    checked = isProtectionEnabled,
+                    checked = isProtectionActive,
                     onCheckedChange = { enabled ->
-                        if (enabled && !hasMicPermission) {
-                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        if (enabled) {
+                            if (!hasMicPermission) {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            } else if (!Settings.canDrawOverlays(context)) {
+                                overlayLauncher.launch(
+                                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                                )
+                            } else {
+                                scope.launch { preferencesManager.setSpeakerProtection(true) }
+                                startProtectionServices()
+                            }
                         } else {
-                            isProtectionEnabled = enabled
+                            scope.launch { preferencesManager.setSpeakerProtection(false) }
+                            stopProtectionServices()
                         }
                     },
                     colors = SwitchDefaults.colors(
@@ -127,9 +207,27 @@ fun SpeakerProtectionScreen(navController: NavController) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("REQUIRED PERMISSIONS", style = MaterialTheme.typography.labelMedium, color = VsOnSurfaceVariant, letterSpacing = 2.sp)
                 Spacer(Modifier.height(12.dp))
-                PermissionRow("Microphone Access", hasMicPermission)
-                PermissionRow("Display Over Apps", Settings.canDrawOverlays(context))
-                PermissionRow("Notifications", true)
+                PermissionRow(
+                    name = "Microphone Access",
+                    granted = hasMicPermission,
+                    onClick = {
+                        if (!hasMicPermission) {
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                )
+                PermissionRow(
+                    name = "Display Over Apps",
+                    granted = hasOverlayPermission,
+                    onClick = {
+                        if (!hasOverlayPermission) {
+                            overlayLauncher.launch(
+                                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                            )
+                        }
+                    }
+                )
+                PermissionRow(name = "Notifications", granted = true, onClick = {})
             }
         }
 
@@ -150,8 +248,15 @@ fun SpeakerProtectionScreen(navController: NavController) {
 }
 
 @Composable
-fun PermissionRow(name: String, granted: Boolean) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+fun PermissionRow(name: String, granted: Boolean, onClick: () -> Unit = {}) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !granted, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Text(name, style = MaterialTheme.typography.bodyMedium, color = VsOnSurface)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(if (granted) Icons.Filled.CheckCircle else Icons.Filled.Cancel, null, tint = if (granted) VsSecondary else VsError, modifier = Modifier.size(18.dp))
@@ -159,3 +264,4 @@ fun PermissionRow(name: String, granted: Boolean) {
         }
     }
 }
+

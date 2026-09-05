@@ -64,6 +64,24 @@ fun VoiceShieldMainApp() {
     val showShell = currentRoute in mainRoutes
 
     val incomingCall by appContainer.voipCallManager.incomingCall.collectAsStateWithLifecycle()
+    val callState by appContainer.voipCallManager.callState.collectAsStateWithLifecycle()
+    val activePeerPhone by appContainer.voipCallManager.activePeerPhone.collectAsStateWithLifecycle()
+    val activePeerName by appContainer.voipCallManager.activePeerName.collectAsStateWithLifecycle()
+
+    // Auto navigate to active call screen if call is active and user is not already on it
+    LaunchedEffect(callState, currentRoute) {
+        if ((callState == com.sagar.voice_shield.service.VoipCallState.CONNECTED ||
+             callState == com.sagar.voice_shield.service.VoipCallState.DIALING ||
+             callState == com.sagar.voice_shield.service.VoipCallState.OFFLINE_DEMO) &&
+            currentRoute?.startsWith("call/") != true) {
+            navController.navigate(
+                Screen.ActiveCall.createRoute(
+                    phone = activePeerPhone,
+                    name = activePeerName
+                )
+            )
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),

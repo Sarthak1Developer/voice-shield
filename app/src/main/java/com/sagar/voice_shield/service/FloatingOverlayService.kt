@@ -182,6 +182,11 @@ class FloatingOverlayService : Service() {
                 updateOverlay(score, AudioAnalysisService.severity.value, AudioAnalysisService.explanations.value)
             }
         }
+        scope.launch {
+            AudioAnalysisService.explanations.collectLatest { exps ->
+                updateOverlay(AudioAnalysisService.riskScore.value, AudioAnalysisService.severity.value, exps)
+            }
+        }
     }
 
     private fun updateOverlay(score: Int, severity: String, explanations: List<String>) {
@@ -196,17 +201,17 @@ class FloatingOverlayService : Service() {
         when (severity) {
             "HIGH" -> {
                 scoreView?.setTextColor(Color.parseColor("#FF4444"))
-                statusView?.text = "🔴 HIGH RISK"
+                statusView?.text = "🔴 HIGH RISK (Scam / Deepfake)"
                 statusView?.setTextColor(Color.parseColor("#FF4444"))
             }
             "MEDIUM" -> {
                 scoreView?.setTextColor(Color.parseColor("#FFB74D"))
-                statusView?.text = "🟠 CAUTION"
+                statusView?.text = "🟠 SUSPICIOUS CALL"
                 statusView?.setTextColor(Color.parseColor("#FFB74D"))
             }
             else -> {
                 scoreView?.setTextColor(Color.parseColor("#4EDEA3"))
-                statusView?.text = "🟢 SAFE"
+                statusView?.text = "🟢 NORMAL CALL (Verified Safe)"
                 statusView?.setTextColor(Color.parseColor("#4EDEA3"))
             }
         }

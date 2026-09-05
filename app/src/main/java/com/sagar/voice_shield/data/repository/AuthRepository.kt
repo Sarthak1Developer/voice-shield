@@ -138,21 +138,29 @@ class AuthRepository(
         }
     }
 
-    suspend fun loginWithGoogle(email: String = "user@voiceshield.app", name: String = "Google User"): Result<LoginResponse> {
+    suspend fun loginWithGoogle(
+        email: String = "user@voiceshield.app",
+        name: String = "Google User",
+        googleId: String? = null,
+        idToken: String? = null
+    ): Result<LoginResponse> {
+        val resolvedId = if (!googleId.isNullOrBlank()) "google-$googleId" else "google-${java.util.UUID.randomUUID().toString().take(8)}"
+        val resolvedName = if (name.isNotBlank()) name else email.substringBefore("@")
         val googleUser = UserDto(
-            id = "google-${java.util.UUID.randomUUID().toString().take(8)}",
-            name = name,
+            id = resolvedId,
+            name = resolvedName,
             email = email,
             phone = "+91 90840 04968"
         )
+        val token = idToken ?: "google-token-${googleUser.id}"
         prefs.saveLoginData(
-            token = "google-token-${googleUser.id}",
+            token = token,
             id = googleUser.id,
             name = googleUser.name,
             email = googleUser.email,
             phone = googleUser.phone
         )
-        return Result.success(LoginResponse("Signed in with Google", "google-token-${googleUser.id}", googleUser))
+        return Result.success(LoginResponse("Signed in with Google", token, googleUser))
     }
 
     suspend fun logout() {

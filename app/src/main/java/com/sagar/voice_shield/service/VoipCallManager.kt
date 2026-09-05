@@ -238,16 +238,16 @@ class VoipCallManager(
                         "ended" -> {
                             stopIncomingRingtone()
                             _statusMessage.value = "Call ended by remote user"
-                            endCall(saveHistory = true)
+                            endCall(saveHistory = true, sendWsEnded = false)
                         }
                     }
                 }
 
                 "webrtc_offer" -> {
                     stopIncomingRingtone()
-                    val fromPhone = json.get("from_phone")?.asString ?: ""
-                    val offerObj = json.get("offer")?.asJsonObject
-                    val sdp = offerObj?.get("sdp")?.asString ?: ""
+                    val fromPhone = json.get("from_phone")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                    val offerObj = json.get("offer")?.takeIf { !it.isJsonNull }?.asJsonObject
+                    val sdp = offerObj?.get("sdp")?.takeIf { !it.isJsonNull }?.asString ?: ""
                     if (sdp.isNotBlank()) {
                         _callState.value = VoipCallState.CONNECTED
                         callStartTime = System.currentTimeMillis()
@@ -257,18 +257,18 @@ class VoipCallManager(
                 }
 
                 "webrtc_answer" -> {
-                    val answerObj = json.get("answer")?.asJsonObject
-                    val sdp = answerObj?.get("sdp")?.asString ?: ""
+                    val answerObj = json.get("answer")?.takeIf { !it.isJsonNull }?.asJsonObject
+                    val sdp = answerObj?.get("sdp")?.takeIf { !it.isJsonNull }?.asString ?: ""
                     if (sdp.isNotBlank()) {
                         webRtcCallManager.handleRemoteAnswer(sdp)
                     }
                 }
 
                 "ice_candidate" -> {
-                    val candObj = json.get("candidate")?.asJsonObject
-                    val cand = candObj?.get("candidate")?.asString ?: ""
-                    val sdpMid = candObj?.get("sdpMid")?.asString ?: ""
-                    val sdpMLineIndex = candObj?.get("sdpMLineIndex")?.asInt ?: 0
+                    val candObj = json.get("candidate")?.takeIf { !it.isJsonNull }?.asJsonObject
+                    val cand = candObj?.get("candidate")?.takeIf { !it.isJsonNull }?.asString ?: ""
+                    val sdpMid = candObj?.get("sdpMid")?.takeIf { !it.isJsonNull }?.asString ?: "0"
+                    val sdpMLineIndex = candObj?.get("sdpMLineIndex")?.takeIf { !it.isJsonNull }?.asInt ?: 0
                     if (cand.isNotBlank()) {
                         webRtcCallManager.handleRemoteCandidate(sdpMid, sdpMLineIndex, cand)
                     }
@@ -358,13 +358,13 @@ class VoipCallManager(
         webRtcCallManager.setMute(isMuted)
     }
 
-    fun endCall(saveHistory: Boolean = true, riskScore: Int = 18) {
+    fun endCall(saveHistory: Boolean = true, riskScore: Int = 18, sendWsEnded: Boolean = true) {
         stopIncomingRingtone()
-        webRtcCallManager.cleanupPeerConnection()
+        webRtcCallManager.cleanupPeerConnection(clearQueuedCandidates = true)
         val peer = _activePeerPhone.value
         val name = _activePeerName.value
 
-        if (peer.isNotBlank()) {
+        if (sendWsEnded && peer.isNotBlank()) {
             sendMessage(JsonObject().apply {
                 addProperty("type", "call_status")
                 addProperty("status", "ended")
@@ -394,11 +394,17 @@ class VoipCallManager(
             }
         }
 
-        _callState.value = VoipCallState.IDLE
-        _activePeerPhone.value = ""
-        _activePeerName.value = ""
-        _incomingCall.value = null
-        callStartTime = 0L
+        _callState.value = VoipCallState.ENDED
+        coroutineScope.launch {
+            delay(1500)
+            if (_callState.value == VoipCallState.ENDED) {
+                _callState.value = VoipCallState.IDLE
+                _activePeerPhone.value = ""
+                _activePeerName.value = ""
+                _incomingCall.value = null
+                callStartTime = 0L
+            }
+        }
     }
 
     private fun sendMessage(json: JsonObject) {

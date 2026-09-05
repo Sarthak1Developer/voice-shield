@@ -106,6 +106,9 @@ dependencies {
     // WebRTC
     implementation("io.getstream:stream-webrtc-android:1.2.0")
 
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

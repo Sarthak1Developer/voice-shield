@@ -104,6 +104,8 @@ fun ActiveCallScreen(
         }
     }
 
+    var callDuration by remember { mutableIntStateOf(0) }
+
     // Permission Management
     var hasMicPermission by remember {
         mutableStateOf(
@@ -134,17 +136,29 @@ fun ActiveCallScreen(
         }
     }
 
-    // Manage Call Sound Engine (Ringtone and Active Call Audio)
+    // Manage Call Sound Engine (Ringtone and Active Call Audio) and auto exit
     LaunchedEffect(callState) {
         when (callState) {
             VoipCallState.DIALING -> {
                 audioCallEngine.startRinging()
             }
-            VoipCallState.CONNECTED, VoipCallState.OFFLINE_DEMO -> {
-                audioCallEngine.startActiveCallAudio()
+            VoipCallState.CONNECTED -> {
+                audioCallEngine.startActiveCallAudio(isVoipWebRtc = true)
             }
-            VoipCallState.ENDED, VoipCallState.IDLE -> {
+            VoipCallState.OFFLINE_DEMO -> {
+                audioCallEngine.startActiveCallAudio(isVoipWebRtc = false)
+            }
+            VoipCallState.ENDED -> {
                 audioCallEngine.stopCallAudio()
+                delay(1500)
+                navController.popBackStack()
+            }
+            VoipCallState.IDLE -> {
+                audioCallEngine.stopCallAudio()
+                if (callDuration > 0) {
+                    delay(1000)
+                    navController.popBackStack()
+                }
             }
             else -> {}
         }
@@ -160,7 +174,6 @@ fun ActiveCallScreen(
 
     // Show model active popup banner state
     var showModelActivePopup by remember { mutableStateOf(true) }
-    var callDuration by remember { mutableIntStateOf(0) }
     var isMuted by remember { mutableStateOf(false) }
 
     // 4-5 Audio Chunks Analysis Confirmation Dialog
@@ -226,8 +239,8 @@ fun ActiveCallScreen(
     }
 
     // Timer
-    LaunchedEffect(Unit) {
-        while (true) {
+    LaunchedEffect(callState) {
+        while (callState != VoipCallState.ENDED && callState != VoipCallState.IDLE) {
             delay(1000)
             callDuration++
         }
@@ -291,6 +304,7 @@ fun ActiveCallScreen(
                             Text(
                                 if (callState == VoipCallState.DIALING) "DIALING..."
                                 else if (callState == VoipCallState.OFFLINE_DEMO) "OFFLINE DEMO"
+                                else if (callState == VoipCallState.ENDED) "CALL ENDED"
                                 else "LIVE ANALYSIS",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = VsError,
@@ -579,21 +593,25 @@ fun ActiveCallScreen(
 
                 // End call
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val isEnded = (callState == VoipCallState.ENDED)
                     IconButton(
                         onClick = {
-                            audioCallEngine.stopCallAudio()
-                            voipCallManager.endCall(saveHistory = true, riskScore = riskScore)
-                            navController.popBackStack()
+                            if (!isEnded) {
+                                audioCallEngine.stopCallAudio()
+                                voipCallManager.endCall(saveHistory = true, riskScore = riskScore)
+                                navController.popBackStack()
+                            }
                         },
+                        enabled = !isEnded,
                         modifier = Modifier
                             .size(58.dp)
                             .clip(CircleShape)
-                            .background(VsError)
+                            .background(if (isEnded) VsSurfaceContainerHighest else VsError)
                     ) {
-                        Icon(Icons.Filled.CallEnd, null, tint = Color.White)
+                        Icon(Icons.Filled.CallEnd, null, tint = if (isEnded) VsOutline else Color.White)
                     }
                     Spacer(Modifier.height(6.dp))
-                    Text("End", style = MaterialTheme.typography.labelSmall, color = VsOnSurfaceVariant)
+                    Text(if (isEnded) "Ended" else "End", style = MaterialTheme.typography.labelSmall, color = VsOnSurfaceVariant)
                 }
             }
         }

@@ -102,6 +102,21 @@ class AuthViewModel(
         }
     }
 
+    fun loginWithGoogleAccount(email: String, name: String, id: String?, idToken: String?) {
+        viewModelScope.launch {
+            _uiState.value = AuthUiState(isLoading = true)
+            val result = authRepository.loginWithGoogle(email = email, name = name, googleId = id, idToken = idToken)
+            result.fold(
+                onSuccess = { response ->
+                    _uiState.value = AuthUiState(isSuccess = true, message = response.message)
+                },
+                onFailure = { error ->
+                    _uiState.value = AuthUiState(error = error.message ?: "Google login failed")
+                }
+            )
+        }
+    }
+
     fun demoLogin(email: String = "sg0169690@gmail.com") {
         viewModelScope.launch {
             _uiState.value = AuthUiState(isLoading = true)

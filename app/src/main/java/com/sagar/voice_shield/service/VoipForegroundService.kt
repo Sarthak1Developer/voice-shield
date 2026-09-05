@@ -277,6 +277,7 @@ class VoipForegroundService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setFullScreenIntent(fullScreenPendingIntent, true)
+            .setContentIntent(fullScreenPendingIntent)
             .setAutoCancel(false)
             .setOngoing(true)
             .addAction(R.drawable.app_logo, "Accept", acceptPendingIntent)

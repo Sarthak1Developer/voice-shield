@@ -38,11 +38,28 @@ class WebRtcCallManager(
             .setUsername("openrelayproject")
             .setPassword("openrelayproject")
             .createIceServer(),
+        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80?transport=udp")
+            .setUsername("openrelayproject")
+            .setPassword("openrelayproject")
+            .createIceServer(),
         PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
             .setUsername("openrelayproject")
             .setPassword("openrelayproject")
             .createIceServer(),
+        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=udp")
+            .setUsername("openrelayproject")
+            .setPassword("openrelayproject")
+            .createIceServer(),
         PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
+            .setUsername("openrelayproject")
+            .setPassword("openrelayproject")
+            .createIceServer(),
+        // Secure TLS TURN relays for strict firewalls, corporate networks & mobile CGNAT
+        PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp")
+            .setUsername("openrelayproject")
+            .setPassword("openrelayproject")
+            .createIceServer(),
+        PeerConnection.IceServer.builder("turns:openrelay.metered.ca:5349?transport=tcp")
             .setUsername("openrelayproject")
             .setPassword("openrelayproject")
             .createIceServer()
@@ -92,9 +109,11 @@ class WebRtcCallManager(
             }
 
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+                Log.d("WEBRTC", "ICE connection state: $state")
                 Log.d(TAG, "IceConnectionState: $state")
                 if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
                     routeAudioToSpeaker()
+                    inspectSelectedCandidatePair()
                 }
             }
 
@@ -105,7 +124,8 @@ class WebRtcCallManager(
             }
 
             override fun onIceCandidate(candidate: IceCandidate) {
-                Log.d(TAG, "Gathered local ICE candidate: ${candidate.sdpMid}")
+                Log.d("WEBRTC", "ICE candidate: ${candidate.sdp}")
+                Log.d(TAG, "Gathered local ICE candidate: ${candidate.sdpMid}, sdp: ${candidate.sdp}")
                 val msg = JsonObject().apply {
                     addProperty("type", "ice_candidate")
                     val candidateObj = JsonObject().apply {
@@ -197,13 +217,37 @@ class WebRtcCallManager(
         }
     }
 
+    private fun inspectSelectedCandidatePair() {
+        try {
+            peerConnection?.getStats { report ->
+                for (stat in report.statsMap.values) {
+                    if (stat.type == "candidate-pair") {
+                        val state = stat.members["state"]
+                        val localCandId = stat.members["localCandidateId"] as? String
+                        val remoteCandId = stat.members["remoteCandidateId"] as? String
+                        val localCand = localCandId?.let { report.statsMap[it] }
+                        val remoteCand = remoteCandId?.let { report.statsMap[it] }
+                        val localType = localCand?.members?.get("candidateType") ?: "unknown"
+                        val remoteType = remoteCand?.members?.get("candidateType") ?: "unknown"
+                        val localIp = localCand?.members?.get("ip") ?: localCand?.members?.get("address") ?: "?"
+                        val remoteIp = remoteCand?.members?.get("ip") ?: remoteCand?.members?.get("address") ?: "?"
+                        Log.d("WEBRTC", "Active Candidate Pair: state=$state | local=$localType ($localIp) <-> remote=$remoteType ($remoteIp)")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed inspecting stats", e)
+        }
+    }
+
     private fun drainQueuedCandidates() {
         val count = queuedRemoteCandidates.size
         if (count > 0) {
-            Log.d(TAG, "Draining $count queued ICE candidates")
+            Log.d("WEBRTC", "Draining $count queued ICE candidates")
             for (cand in queuedRemoteCandidates) {
                 try {
                     peerConnection?.addIceCandidate(cand)
+                    Log.d("WEBRTC", "Added queued candidate: ${cand.sdpMid}")
                 } catch (e: Exception) {
                     Log.w(TAG, "Error adding queued candidate", e)
                 }
@@ -214,7 +258,7 @@ class WebRtcCallManager(
 
     fun startCallerFlow(peerPhone: String) {
         activePeerPhone = peerPhone
-        cleanupPeerConnection()
+        cleanupPeerConnection(clearQueuedCandidates = false)
         peerConnection = createPeerConnection()
 
         val sdpConstraints = MediaConstraints().apply {
@@ -257,7 +301,7 @@ class WebRtcCallManager(
 
     fun handleRemoteOffer(offerSdp: String, peerPhone: String) {
         activePeerPhone = peerPhone
-        cleanupPeerConnection()
+        cleanupPeerConnection(clearQueuedCandidates = false)
         peerConnection = createPeerConnection()
 
         val remoteSession = SessionDescription(SessionDescription.Type.OFFER, offerSdp)
@@ -331,12 +375,14 @@ class WebRtcCallManager(
 
     fun handleRemoteCandidate(sdpMid: String, sdpMLineIndex: Int, sdp: String) {
         try {
-            val candidate = IceCandidate(sdpMid, sdpMLineIndex, sdp)
+            if (sdp.isBlank()) return
+            val safeMid = if (sdpMid.isBlank() || sdpMid == "null") "0" else sdpMid
+            val candidate = IceCandidate(safeMid, sdpMLineIndex, sdp)
             if (isRemoteDescriptionSet && peerConnection != null) {
                 peerConnection?.addIceCandidate(candidate)
-                Log.d(TAG, "Added remote ICE candidate immediately: $sdpMid")
+                Log.d("WEBRTC", "Added remote ICE candidate immediately: $safeMid (${candidate.sdp})")
             } else {
-                Log.d(TAG, "Queued remote ICE candidate (pending remote desc): $sdpMid")
+                Log.d("WEBRTC", "Queued remote ICE candidate (pending remote desc): $safeMid")
                 queuedRemoteCandidates.add(candidate)
             }
         } catch (e: Exception) {
@@ -348,10 +394,12 @@ class WebRtcCallManager(
         localAudioTrack?.setEnabled(!muted)
     }
 
-    fun cleanupPeerConnection() {
+    fun cleanupPeerConnection(clearQueuedCandidates: Boolean = true) {
         try {
             isRemoteDescriptionSet = false
-            queuedRemoteCandidates.clear()
+            if (clearQueuedCandidates) {
+                queuedRemoteCandidates.clear()
+            }
 
             localAudioTrack?.setEnabled(false)
             localAudioTrack?.dispose()

@@ -157,13 +157,20 @@ class AudioAnalysisService : Service() {
                     
                     val app = applicationContext as VoiceShieldApp
                     val response = app.appContainer.api.uploadAudio(part)
-                    
-                    _deepfakeScore.value = response.deepfake_score ?: 0.0
-                    _prosodyScore.value = response.prosody_score ?: 0.0
-                    _riskScore.value = response.risk_score?.toInt() ?: 0
-                    _severity.value = response.severity ?: "LOW"
-                    
-                    val notification = createNotification("Risk: ${_riskScore.value}/100 — ${_severity.value}")
+                    _deepfakeScore.value = response.deepfakeScore
+                    _prosodyScore.value = response.prosodyScore
+                    _riskScore.value = response.riskScore.toInt()
+                    _severity.value = response.severity
+
+                    val computedRisk = _riskScore.value
+                    val explanation = when {
+                        computedRisk > 65 -> "🔴 HIGH RISK: Scam / Deepfake Voice Detected"
+                        computedRisk > 35 -> "🟠 CAUTION: Suspicious Voice Anomaly"
+                        else -> "🟢 SAFE: Normal Acoustic Speech Verified"
+                    }
+                    _explanations.value = listOf(explanation)
+
+                    val notification = createNotification("Risk: $computedRisk/100 — $explanation")
                     val manager = getSystemService(NotificationManager::class.java)
                     manager?.notify(NOTIFICATION_ID, notification)
                 } catch (e: Exception) {
