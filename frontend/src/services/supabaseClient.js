@@ -8,8 +8,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,  // Critical: auto-detect OAuth hash fragments
-    flowType: 'implicit',      // Use implicit flow so tokens come back in URL hash
+    // We handle the URL hash/code manually in VerifySuccess.jsx
+    // This prevents Supabase from consuming the hash before our code reads it
+    detectSessionInUrl: false,
   },
 })
 
@@ -22,10 +23,6 @@ export async function signInWithGoogle() {
     provider: 'google',
     options: {
       redirectTo: `${window.location.origin}/verify-success`,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent',
-      },
     },
   })
 
@@ -34,16 +31,4 @@ export async function signInWithGoogle() {
   }
 
   return data
-}
-
-/**
- * Gets the current Supabase session (used after OAuth redirect).
- * Tries multiple methods to establish the session.
- */
-export async function getSession() {
-  const { data, error } = await supabase.auth.getSession()
-  if (error) {
-    throw new Error(error.message)
-  }
-  return data.session
 }

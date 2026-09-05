@@ -35,11 +35,26 @@ function App() {
   const [profileSuccess, setProfileSuccess] = useState('');
   const [updatingProfile, setUpdatingProfile] = useState(false);
 
-  // Load user from localStorage on mount
+  // Load user from localStorage on mount (with UUID validation)
   useEffect(() => {
     const storedUser = localStorage.getItem('voiceshield_user');
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      try {
+        const parsed = JSON.parse(storedUser);
+        // Validate that the user ID is a proper UUID (not a fake timestamp-based ID)
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (parsed.id && UUID_REGEX.test(parsed.id)) {
+          setUser(parsed);
+        } else {
+          // Clear invalid session — force re-login to get a real UUID
+          console.warn('Invalid user ID in localStorage, clearing session:', parsed.id);
+          localStorage.removeItem('voiceshield_user');
+          localStorage.removeItem('voiceshield_phone_prompted');
+          localStorage.removeItem('voiceshield_prompt_phone');
+        }
+      } catch (e) {
+        localStorage.removeItem('voiceshield_user');
+      }
     }
   }, []);
 
