@@ -199,17 +199,32 @@ fun ShieldHubScreen(navController: NavController) {
 
                         // Calculate live risk score
                         val deepfakeEstimate = features.unnaturalnessScore
-                        val prosodyScore = features.unnaturalnessScore * 0.85
-                        val speakerSim = (1.0 - (deepfakeEstimate * 0.45)).coerceIn(0.70, 0.98)
+                        val threatEstimate = features.threatScore
+                        val prosodyScore = maxOf(features.unnaturalnessScore * 0.85, threatEstimate * 0.75)
+                        val contextScore = if (threatEstimate >= 0.35) (threatEstimate * 0.50).coerceIn(0.15, 0.50) else 0.05
+                        val speakerSim = if (threatEstimate >= 0.35) (0.90 - threatEstimate * 0.20).coerceIn(0.70, 0.90) else (1.0 - (deepfakeEstimate * 0.45)).coerceIn(0.70, 0.98)
                         val riskResult = appContainer.riskEngine.calculateRisk(
                             RiskEngine.RiskSignals(
                                 deepfakeScore = deepfakeEstimate,
                                 speakerSimilarity = speakerSim,
                                 prosodyScore = prosodyScore,
-                                contextScore = 0.10
+                                contextScore = contextScore,
+                                threatScore = threatEstimate
                             )
                         )
-                        diagnosticRiskScore = riskResult.score.toInt().coerceIn(12, 95)
+                        diagnosticRiskScore = riskResult.score.toInt().coerceIn(12, 65)
+
+                        // Immediately update diagnostic model verdict using on-device DSP features
+                        if (diagnosticRiskScore >= 52) {
+                            diagnosticModelVerdict = "🚨 SCAM THREAT: High-pressure urgency & stress (${diagnosticRiskScore}% risk)"
+                            diagnosticIsDeepfake = true
+                        } else if (diagnosticRiskScore >= 28) {
+                            diagnosticModelVerdict = "⚠️ SUSPICIOUS: Vocal anomaly detected (${diagnosticRiskScore}% risk)"
+                            diagnosticIsDeepfake = true
+                        } else {
+                            diagnosticModelVerdict = "✅ BONAFIDE: Natural Human Voice verified (${diagnosticRiskScore}% safe)"
+                            diagnosticIsDeepfake = false
+                        }
 
                         // Convert shorts to bytes for cloud AASIST model accumulation
                         val pcmBytes = ByteArray(read * 2)
@@ -230,12 +245,11 @@ fun ShieldHubScreen(navController: NavController) {
                                 try {
                                     val wavBytes = createWavHeader(pcmForModel, sampleRate)
                                     val hfResp = appContainer.huggingFaceGradioClient.analyzeAudio(wavBytes)
-                                    diagnosticRiskScore = hfResp.riskScore.toInt().coerceIn(5, 98)
-                                    diagnosticIsDeepfake = hfResp.isDeepfake
-                                    diagnosticModelVerdict = if (hfResp.isDeepfake) {
-                                        "🚨 SPOOF DETECTED: Cloned Speech (${(hfResp.deepfakeScore * 100).toInt()}% prob)"
-                                    } else {
-                                        "✅ BONAFIDE: Natural Human Voice (${(hfResp.bonafideScore * 100).toInt()}% verified)"
+                                    val combinedScore = maxOf(diagnosticRiskScore, hfResp.riskScore.toInt()).coerceIn(12, 98)
+                                    diagnosticRiskScore = combinedScore
+                                    if (hfResp.isDeepfake) {
+                                        diagnosticIsDeepfake = true
+                                        diagnosticModelVerdict = "🚨 SPOOF DETECTED: Cloned Speech (${(hfResp.deepfakeScore * 100).toInt()}% prob)"
                                     }
                                     diagnosticStatusText = "AASIST Model verified chunk $diagnosticChunksCount"
                                 } catch (e: Exception) {

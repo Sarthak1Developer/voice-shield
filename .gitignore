@@ -224,6 +224,8 @@ local_dataset_garystafford/
 aasist/exp_result/
 aasist/depreciated/
 aasist/LA/
+aasist/data/
+*.arrow
 
 # ===========================
 # Code Atlas

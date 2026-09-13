@@ -39,6 +39,7 @@ class WebRtcCallManager(
     )
 
     var onAudioChunkCaptured: ((pcmData: ByteArray, sampleRate: Int) -> Unit)? = null
+    var onIceConnected: (() -> Unit)? = null
 
     init {
         initPeerConnectionFactory()
@@ -97,6 +98,8 @@ class WebRtcCallManager(
                 Log.d(TAG, "IceConnectionState: $state")
                 if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
                     inspectSelectedCandidatePair()
+                    // Re-enforce earpiece/speaker routing after WebRTC establishes its audio path
+                    onIceConnected?.invoke()
                 }
             }
 
@@ -126,8 +129,8 @@ class WebRtcCallManager(
 
             override fun onAddStream(stream: MediaStream) {
                 Log.d(TAG, "onAddStream with audio tracks: ${stream.audioTracks.size}")
-                // Mute remote WebRTC track; VoipAudioStreamer handles in-call earpiece playback exclusively
-                stream.audioTracks.forEach { it.setEnabled(false) }
+                // Enable remote audio tracks for voice playback
+                stream.audioTracks.forEach { it.setEnabled(true) }
             }
 
             override fun onRemoveStream(stream: MediaStream) {}
@@ -140,7 +143,7 @@ class WebRtcCallManager(
                 Log.d(TAG, "onAddTrack received track kind: ${receiver.track()?.kind()}")
                 val track = receiver.track()
                 if (track is AudioTrack) {
-                    track.setEnabled(false)
+                    track.setEnabled(true)
                 }
             }
 
@@ -148,7 +151,7 @@ class WebRtcCallManager(
                 Log.d(TAG, "onTrack transceiver received kind: ${transceiver.receiver.track()?.kind()}")
                 val track = transceiver.receiver.track()
                 if (track is AudioTrack) {
-                    track.setEnabled(false)
+                    track.setEnabled(true)
                 }
             }
         }

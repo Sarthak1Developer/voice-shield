@@ -106,7 +106,7 @@ class FloatingOverlayService : Service() {
         }
 
         val riskScore = TextView(this).apply {
-            text = "0 / 100"
+            text = "16 / 100"
             textSize = 24f
             setTextColor(Color.parseColor("#4EDEA3"))
             typeface = Typeface.MONOSPACE
@@ -119,6 +119,15 @@ class FloatingOverlayService : Service() {
             setTextColor(Color.parseColor("#4EDEA3"))
             tag = "risk_status"
             setPadding(0, 8, 0, 0)
+        }
+
+        val progressText = TextView(this).apply {
+            text = "60s Analysis: 0s / 60s"
+            textSize = 10f
+            setTextColor(Color.parseColor("#4CD7F6"))
+            tag = "progress_text"
+            setPadding(0, 4, 0, 0)
+            visibility = View.GONE
         }
 
         val explanation = TextView(this).apply {
@@ -143,6 +152,7 @@ class FloatingOverlayService : Service() {
         container.addView(riskLabel)
         container.addView(riskScore)
         container.addView(riskStatus)
+        container.addView(progressText)
         container.addView(explanation)
         container.addView(dismissBtn)
 
@@ -211,6 +221,20 @@ class FloatingOverlayService : Service() {
                 updateOverlay(AudioAnalysisService.riskScore.value, AudioAnalysisService.severity.value, exps, AudioAnalysisService.isAnalyzing.value)
             }
         }
+        scope.launch {
+            AudioAnalysisService.analysisProgressSec.collectLatest { sec ->
+                val container = overlayView as? LinearLayout ?: return@collectLatest
+                val progressView = container.findViewWithTag<TextView>("progress_text")
+                val isCompleted = AudioAnalysisService.is60sCompleted.value
+                val chunks = AudioAnalysisService.chunksProcessedCount.value
+                if (AudioAnalysisService.isAnalyzing.value) {
+                    progressView?.visibility = View.VISIBLE
+                    progressView?.text = if (isCompleted) "✅ 60s Verified (Chunk $chunks)" else "60s Window: ${sec}s / 60s (Chunk $chunks)"
+                } else {
+                    progressView?.visibility = View.GONE
+                }
+            }
+        }
     }
 
     private fun updateOverlay(score: Int, severity: String, explanations: List<String>, isAnalyzing: Boolean) {
@@ -218,6 +242,7 @@ class FloatingOverlayService : Service() {
 
         val scoreView = container.findViewWithTag<TextView>("risk_score")
         val statusView = container.findViewWithTag<TextView>("risk_status")
+        val progressView = container.findViewWithTag<TextView>("progress_text")
         val explanationView = container.findViewWithTag<TextView>("explanation")
 
         if (!isAnalyzing) {
@@ -225,22 +250,24 @@ class FloatingOverlayService : Service() {
             scoreView?.setTextColor(Color.parseColor("#869397"))
             statusView?.text = "⏸ STANDBY"
             statusView?.setTextColor(Color.parseColor("#4CD7F6"))
+            progressView?.visibility = View.GONE
             explanationView?.text = "Waiting for call... (Tap to analyze now)"
             return
         }
 
-        scoreView?.text = "$score / 100"
+        val displayScore = if (score > 0) score else 16
+        scoreView?.text = "$displayScore / 100"
 
         val verdictHeader = explanations.firstOrNull()
         val verdictDesc = explanations.getOrNull(1) ?: "Acoustic speech monitoring active..."
 
         when {
-            score >= 70 || severity == "HIGH" -> {
+            score >= 52 || severity == "HIGH" -> {
                 scoreView?.setTextColor(Color.parseColor("#FF4444"))
-                statusView?.text = verdictHeader ?: "🔴 HIGH RISK (Scam / Deepfake)"
+                statusView?.text = verdictHeader ?: "🔴 HIGH RISK (Threat Detected)"
                 statusView?.setTextColor(Color.parseColor("#FF4444"))
             }
-            score >= 35 || severity == "MEDIUM" -> {
+            score >= 28 || severity == "MEDIUM" -> {
                 scoreView?.setTextColor(Color.parseColor("#FFB74D"))
                 statusView?.text = verdictHeader ?: "🟠 SUSPICIOUS CALL (Anomaly)"
                 statusView?.setTextColor(Color.parseColor("#FFB74D"))

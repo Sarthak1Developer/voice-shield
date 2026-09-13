@@ -48,6 +48,13 @@ fun SpeakerProtectionScreen(navController: NavController) {
     val savedProtectionEnabled by preferencesManager.speakerProtectionEnabled.collectAsState(initial = true)
     val isServiceRunning by AudioAnalysisService.isRunning.collectAsState()
     val isActivelyAnalyzing by AudioAnalysisService.isAnalyzing.collectAsState()
+    val riskScore by AudioAnalysisService.riskScore.collectAsState()
+    val severity by AudioAnalysisService.severity.collectAsState()
+    val explanations by AudioAnalysisService.explanations.collectAsState()
+    val progressSec by AudioAnalysisService.analysisProgressSec.collectAsState()
+    val chunksCount by AudioAnalysisService.chunksProcessedCount.collectAsState()
+    val statusText by AudioAnalysisService.statusText.collectAsState()
+    val is60sCompleted by AudioAnalysisService.is60sCompleted.collectAsState()
 
     var hasMicPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -211,7 +218,12 @@ fun SpeakerProtectionScreen(navController: NavController) {
 
                     Spacer(Modifier.height(10.dp))
                     OutlinedButton(
-                        onClick = { AudioAnalysisService.toggleAnalysis() },
+                        onClick = {
+                            if (!isServiceRunning) {
+                                startProtectionServices()
+                            }
+                            AudioAnalysisService.toggleAnalysis()
+                        },
                         modifier = Modifier.fillMaxWidth().height(42.dp),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
@@ -224,6 +236,124 @@ fun SpeakerProtectionScreen(navController: NavController) {
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold
                         )
+                    }
+
+                    if (isActivelyAnalyzing || progressSec > 0) {
+                        Spacer(Modifier.height(16.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = VsSurfaceContainerHighest),
+                            border = BorderStroke(
+                                1.dp,
+                                when {
+                                    riskScore >= 52 -> VsError.copy(alpha = 0.8f)
+                                    riskScore >= 28 -> Color(0xFFFFB74D).copy(alpha = 0.8f)
+                                    else -> Color(0xFF4EDEA3).copy(alpha = 0.6f)
+                                }
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            "LIVE RISK SCORE",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = VsOnSurfaceVariant,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Text(
+                                            "$riskScore / 100",
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                riskScore >= 52 -> VsError
+                                                riskScore >= 28 -> Color(0xFFFFB74D)
+                                                else -> Color(0xFF4EDEA3)
+                                            }
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = when {
+                                            riskScore >= 52 -> VsErrorContainer
+                                            riskScore >= 28 -> Color(0xFF3E2723)
+                                            else -> Color(0xFF1B382B)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = when {
+                                                riskScore >= 52 -> "🔴 HIGH RISK"
+                                                riskScore >= 28 -> "🟠 SUSPICIOUS"
+                                                else -> "🟢 SAFE"
+                                            },
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                riskScore >= 52 -> VsOnErrorContainer
+                                                riskScore >= 28 -> Color(0xFFFFB74D)
+                                                else -> Color(0xFF4EDEA3)
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // 60s Analysis Window Progress
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        if (is60sCompleted) "✅ 60s Full Analysis Complete" else "60s Analysis Window",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = VsOnSurfaceVariant
+                                    )
+                                    Text(
+                                        "${progressSec}s / 60s (Chunk $chunksCount)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = VsPrimary
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = (progressSec / 60f).coerceIn(0f, 1f),
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                    color = when {
+                                        riskScore >= 52 -> VsError
+                                        riskScore >= 28 -> Color(0xFFFFB74D)
+                                        else -> Color(0xFF4EDEA3)
+                                    },
+                                    trackColor = VsSurfaceContainerLow
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Text(
+                                    explanations.firstOrNull() ?: "Acoustic monitoring active...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = when {
+                                        riskScore >= 52 -> VsError
+                                        riskScore >= 28 -> Color(0xFFFFB74D)
+                                        else -> VsOnSurface
+                                    }
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    explanations.getOrNull(1) ?: "Analyzing vocal harmonics and speech cadence.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = VsOnSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }

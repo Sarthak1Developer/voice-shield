@@ -113,5 +113,12 @@ class AppContainer(context: Context) {
         voipCallManager.audioStreamer.onPeerAudioDecoded = { pcmData, sampleRate ->
             audioCallEngine.feedAudioChunk(pcmData, sampleRate)
         }
+
+        // Re-enforce earpiece/speaker audio routing after WebRTC ICE connection establishes
+        // WebRTC creates its own AudioTrack which may override earpiece routing
+        voipCallManager.webRtcCallManager.onIceConnected = {
+            val isSpeaker = voipCallManager.audioStreamer.isSpeakerOn.value
+            voipCallManager.audioStreamer.enforceAudioRouting(isSpeaker)
+        }
     }
 }

@@ -5,76 +5,143 @@
 <h1 align="center">VoiceShield</h1>
 
 <p align="center">
-  <b>Real-time AI-powered voice deepfake detection & call security platform</b>
+  <b>Real-time AI-powered voice deepfake detection, scam threat mitigation & call security platform</b>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React" />
   <img src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin" />
   <img src="https://img.shields.io/badge/PyTorch-1.6+-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch" />
   <img src="https://img.shields.io/badge/Supabase-Database-3FCF8E?logo=supabase&logoColor=white" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Hugging%20Face-Gradio%20API-FFD21E?logo=huggingface&logoColor=black" alt="Hugging Face" />
+  <img src="https://img.shields.io/badge/Android-SDK%2036-3DDC84?logo=android&logoColor=white" alt="Android" />
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
 </p>
 
 ---
 
 ## 📖 Overview
 
-**VoiceShield** is a full-stack AI platform that protects users from voice-based deepfake attacks during phone calls. It combines state-of-the-art audio anti-spoofing models (AASIST) with a real-time analysis backend, a responsive web dashboard, and a native Android companion app.
+**VoiceShield** is an end-to-end, multi-layered security ecosystem engineered to defend individuals and enterprises against voice-based deepfake attacks, synthetic speech impersonation, and social engineering telephone fraud in real time.
 
-### Key Features
+By coupling ultra-low-latency on-device Digital Signal Processing (DSP) prosody analysis with deep neural anti-spoofing models (AASIST), cloud Gradio inference, and an Android floating call overlay, VoiceShield delivers instantaneous risk telemetry during ongoing phone and VoIP conversations.
 
-- 🛡️ **Real-time Deepfake Detection** — AASIST-based spectro-temporal graph attention network classifies audio as bonafide or spoofed
-- 📊 **Multi-Factor Risk Scoring** — Combines deepfake score, speaker verification, prosody analysis, and context scoring
-- 📞 **Live Call Monitoring** — WebRTC-powered in-call analysis with instant threat alerts
-- 👥 **Trusted Contacts Management** — Maintain a verified contact list with known voice profiles
-- 📈 **Threat Analytics Dashboard** — Visualize call history, risk trends, and security insights
-- 🔐 **User Authentication** — Secure signup/login with email verification via Supabase
-- 📱 **Android Native App** — Kotlin + Jetpack Compose companion app with on-device ML support
+### Key Capabilities
+
+- 🛡️ **AASIST Deepfake Audio Detection** — Spectro-temporal graph attention network (AASIST / AASIST-L) detecting synthetic speech, vocoder artifacts, and voice conversion with state-of-the-art accuracy.
+- ⚡ **On-Device Hybrid Prosody & Threat Engine** — DSP engine analyzing pitch volatility, vocal jitter, shimmer, speaking cadence, and social engineering urgency/threat dynamics (e.g., intimidation yelling, rushed scam cadence).
+- ⏱️ **60-Second Progressive Verification Window** — Real-time continuous analysis window with rolling risk indicators, nominal human baseline calibration (12–18%), suspicious pressure warnings (28–50%), and verified completion badges.
+- ☁️ **Hugging Face Gradio Cloud & Resilient Fallback** — Seamless cloud verification via Hugging Face Gradio API with automatic fallback to FastAPI backend and localized on-device DSP.
+- 🫧 **Floating Call Protection Overlay** — Android `SYSTEM_ALERT_WINDOW` floating widget displaying live risk scores, acoustic statuses, and threat badges over any active third-party call.
+- 📞 **WebRTC In-Call Audio Engine** — Custom WebRTC calling engine with fine-grained earpiece/speaker routing, bidirectional audio streaming, and live threat telemetry.
+- 👥 **Biometric Speaker Verification** — Cosine similarity matching against enrolled voice prints to prevent caller ID spoofing and identity theft.
+- 📊 **Multimodal Risk Scoring** — Blended risk framework combining deepfake probabilities, biometric voice matching, prosody anomalies, and conversational context into an actionable 0–100 risk score.
+- 📈 **React 19 Security Dashboard** — Responsive web console for reviewing call histories, threat trends, managing trusted contacts, and monitoring enrolled biometric profiles.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    subgraph Client ["📱 Android Client (Kotlin / Jetpack Compose)"]
+        AudioRecord["Mic / In-Call Stream (16kHz PCM)"]
+        DSP["ProsodyAnalyzer (DSP / FFT)<br/>• Pitch Variance & Jitter<br/>• Shimmer & Speaking Rate<br/>• Threat & Urgency Dynamics"]
+        Overlay["FloatingOverlayService<br/>(System Alert Window)"]
+        UI["Shield Hub & Active Call UI<br/>(60s Progressive Gauge)"]
+        AudioRecord --> DSP
+        DSP --> UI
+        DSP --> Overlay
+    end
+
+    subgraph CloudML ["🧠 Cloud & Backend Inference Layer"]
+        HF["Hugging Face Gradio Space<br/>(AASIST Audio Classifier)"]
+        FastAPI["FastAPI Backend Service<br/>(Render Deployment)"]
+        RiskEngine["Multimodal Risk Engine<br/>• Deepfake Probability (40%)<br/>• Speaker Biometrics (25%)<br/>• Prosody & Threat (15%)<br/>• Context Signals (20%)"]
+        
+        DSP -.->|"WAV Chunks"| HF
+        HF -.->|"Fallback"| FastAPI
+        HF --> RiskEngine
+        FastAPI --> RiskEngine
+    end
+
+    subgraph DataStore ["🗄️ Storage & Management"]
+        Supabase[("Supabase PostgreSQL<br/>• Partitioned Call Logs<br/>• Biometric Embeddings<br/>• Trusted Contacts")]
+        ReactDash["🌐 React 19 Dashboard<br/>(Vite / Vercel)"]
+        FastAPI <--> Supabase
+        Supabase <--> ReactDash
+    end
+
+    RiskEngine -->|"Live Telemetry & Alerts"| UI
+    RiskEngine -->|"Risk Badges"| Overlay
+```
+
+---
+
+## 📁 Repository Structure
 
 ```
 voice-shield/
-├── aasist/              # 🧠 AI/ML Engine — AASIST deepfake detection models
-│   ├── models/          # Model architectures (AASIST, RawNet2, RawGAT-ST)
-│   ├── config/          # Training & evaluation configurations
-│   ├── inference.py     # Standalone inference script
-│   ├── main.py          # Training & evaluation pipeline
+├── aasist/                  # 🧠 AI/ML Engine — AASIST Deepfake Detection
+│   ├── models/              # Model architectures (AASIST, AASIST-L, RawNet2, RawGAT-ST)
+│   ├── config/              # Training, evaluation & inference configurations
+│   ├── inference.py         # Standalone audio file inference CLI
+│   ├── main.py              # PyTorch training & evaluation pipeline
 │   └── requirements.txt
 │
-├── backend/             # ⚡ FastAPI Backend — REST API & business logic
+├── backend/                 # ⚡ FastAPI Backend — REST API & Risk Evaluation
 │   ├── app/
-│   │   ├── api/         # Route handlers (auth, calls, analysis, users, contacts)
-│   │   ├── models/      # Pydantic data models
-│   │   └── services/    # Business logic & Supabase integration
-│   ├── supabase_schema.sql
+│   │   ├── api/             # Routes: /auth, /calls, /analysis, /users, /contacts
+│   │   ├── models/          # Pydantic schemas & request/response contracts
+│   │   └── services/        # Business logic, Supabase client, risk scoring
+│   ├── supabase_schema.sql  # Database schema with user-partitioned tables
 │   └── requirements.txt
 │
-├── frontend/            # 🌐 React Web App — Dashboard & call interface
+├── frontend/                # 🌐 React 19 Web App — Threat Analytics & Admin Dashboard
 │   ├── src/
-│   │   ├── pages/       # Dashboard, Call, Contacts, Settings, Analytics
-│   │   ├── components/  # Reusable UI components
-│   │   ├── context/     # React context providers
-│   │   └── services/    # API service layer
+│   │   ├── pages/           # Dashboard, Active Call, Contacts, Settings, Analytics
+│   │   ├── components/      # Reusable UI widgets, charts & gauges
+│   │   ├── context/         # Auth & Call State context providers
+│   │   └── services/        # API integration layer
 │   └── package.json
 │
-├── app/                 # 📱 Android App — Kotlin + Jetpack Compose
+├── app/                     # 📱 Android Application — Kotlin + Jetpack Compose
 │   └── src/main/java/com/sagar/voice_shield/
-│       ├── data/        # Data layer (Room DB, API, repositories)
-│       ├── ml/          # On-device ML inference
-│       ├── ui/          # Compose UI screens & theme
-│       ├── service/     # Background call monitoring service
-│       ├── navigation/  # Navigation graph
-│       └── notification/ # Alert notifications
+│       ├── data/            # Room DB, Retrofit API, Gradio client, Repositories
+│       ├── ml/              # On-device ProsodyAnalyzer & RiskEngine
+│       ├── service/         # AudioAnalysisService, FloatingOverlayService, AudioCallEngine
+│       ├── ui/              # Compose screens (ShieldHub, ActiveCall, SpeakerProtection)
+│       └── notification/    # High-priority foreground notifications & alerts
 │
-├── models/              # 🗂️ Shared model weights directory
-├── logo.jpeg            # Project logo
-└── build.gradle.kts     # Root Gradle config (Android)
+├── models/                  # 🗂️ Pretrained weights & model artifacts
+├── logo.jpeg                # Project emblem
+└── build.gradle.kts         # Root Gradle build configuration
 ```
+
+---
+
+## 🎯 Threat Detection & Scoring Model
+
+VoiceShield evaluates calls across multiple vectors to produce an accurate, calibrated risk score from **12 to 100**:
+
+$$\text{Risk} = \Big(0.40 \cdot P_{\text{deepfake}} + 0.25 \cdot (1 - S_{\text{speaker}}) + 0.15 \cdot P_{\text{prosody}} + 0.20 \cdot C_{\text{context}}\Big) \times 100$$
+
+### Score Tiers & Calibrated Baselines
+
+| Score Range | Severity | Status | Description & User Action |
+|:---:|:---:|:---:|---|
+| **12 – 27** | `LOW` | 🟢 Verified Safe | Genuine human vocal tract verified; baseline accommodates mobile codec compression (AMR-WB/Opus). |
+| **28 – 51** | `MEDIUM` | 🟠 Suspicious | Acoustic anomalies detected: robotic cadence, severe pitch flattening, or aggressive urgency. |
+| **52 – 100** | `HIGH` | 🔴 Critical Threat | Synthetic vocoder signature confirmed, severe biometric mismatch, or active impersonation scam. |
+
+### Acoustic DSP Metrics Analyzed On-Device
+
+- **Pitch Variance & Jitter**: Identifies synthetic flat pitch patterns ($\sigma_p < 35\text{ Hz}$) and micro-frequency instability.
+- **Vocal Shimmer**: Detects synthetic vocoder amplitude distortion vs. natural voice perturbations.
+- **Speaking Rate**: Measures syllable peak cadence per second to catch rush-intimidation tactics ($> 4.8\text{ syll/s}$).
+- **Energy / Amplitude Spikes**: Flags shouting, threats, and acoustic intimidation tactics ($A_{\text{peak}} > 0.60$).
 
 ---
 
@@ -82,199 +149,172 @@ voice-shield/
 
 ### Prerequisites
 
-| Component | Requirement |
-|-----------|-------------|
-| **AASIST** | Python 3.10+, PyTorch ≥ 1.6, CUDA (optional, for GPU training) |
-| **Backend** | Python 3.10+, Supabase project |
-| **Frontend** | Node.js 18+, npm |
-| **Android** | Android Studio, JDK 17, Android SDK 36 |
+| Layer | System Requirements |
+|---|---|
+| **Python** | Python 3.10+, PyTorch ≥ 1.6, `ffmpeg` / `libsndfile` |
+| **Backend** | Python 3.10+, Supabase account & project |
+| **Frontend** | Node.js 18+ (Node 20+ recommended), npm / pnpm |
+| **Android** | Android Studio Ladybug+, JDK 17, Android SDK 36 (minSdk 26) |
 
 ---
 
-### 1. Clone the Repository
+### 1. Repository Setup
 
 ```bash
 git clone https://github.com/ShauriyaDeveloper1/voice-shield.git
 cd voice-shield
 ```
 
-### 2. AASIST — AI/ML Engine
+### 2. AASIST ML Engine
 
 ```bash
 cd aasist
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-**Run inference on an audio file:**
+**Run standalone audio classification:**
 ```bash
 python inference.py --audio sample_test.wav
 ```
 
-**Train a model:**
+**Train or evaluate model:**
 ```bash
+# Training
 python main.py --config ./config/AASIST.conf
-```
 
-**Evaluate a pre-trained model:**
-```bash
+# Evaluation
 python main.py --eval --config ./config/AASIST.conf
 ```
 
-### 3. Backend — FastAPI Server
+### 3. FastAPI Backend Server
 
 ```bash
-cd backend
+cd ../backend
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+# Windows:
+venv\Scripts\activate
+# Linux/macOS:
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-**Configure environment variables:**
+**Configure `.env`:**
 ```bash
 cp .env.example .env
-# Edit .env with your Supabase credentials:
-#   SUPABASE_URL=<your-supabase-url>
-#   SUPABASE_ANON_KEY=<your-anon-key>
-#   SECRET_KEY=<your-secret-key>
+```
+Edit `.env` with your credentials:
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+SECRET_KEY=your-secret-encryption-key
 ```
 
-**Set up the database:**
-Run `supabase_schema.sql` in your Supabase SQL editor to create all tables and triggers.
+**Database Setup:**
+Execute `supabase_schema.sql` within your Supabase SQL Editor to initialize all partitioned tables, triggers, and Row Level Security policies.
 
-**Start the server:**
+**Run the API server:**
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+API docs available at `http://localhost:8000/docs`.
 
-The API will be available at `http://localhost:8000`. Swagger docs at `/docs`.
-
-### 4. Frontend — React Web App
+### 4. React 19 Frontend Dashboard
 
 ```bash
-cd frontend
+cd ../frontend
 npm install
 npm run dev
 ```
+Access the dashboard at `http://localhost:5173`.
 
-The dashboard will be available at `http://localhost:5173`.
+### 5. Android Companion Application
 
-### 5. Android App
-
-1. Open the project root in **Android Studio**
-2. Sync Gradle dependencies
-3. Build and run on an emulator or physical device (minSdk 26)
-
----
-
-## 🔌 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Health check |
-| `GET` | `/health` | Service status |
-| `POST` | `/api/auth/register` | Register a new user |
-| `POST` | `/api/auth/login` | User login |
-| `GET` | `/api/calls/` | List call records |
-| `POST` | `/api/calls/` | Create a call record |
-| `POST` | `/api/analysis/` | Submit audio for analysis |
-| `GET` | `/api/users/` | Get user profile |
-| `GET` | `/api/contacts/` | List trusted contacts |
-| `POST` | `/api/contacts/` | Add a trusted contact |
+1. Open `voice-shield` in **Android Studio**.
+2. Synchronize Gradle project files.
+3. Grant necessary runtime permissions upon launch:
+   - **Microphone** (`android.permission.RECORD_AUDIO`) — In-call audio stream capture.
+   - **Display over other apps** (`android.permission.SYSTEM_ALERT_WINDOW`) — Floating call protection bubble.
+   - **Notifications** (`android.permission.POST_NOTIFICATIONS`) — Real-time threat alerts.
+4. Run on a physical Android device or emulator running API 26+.
 
 ---
 
-## 🗄️ Database Schema
+## 🔌 API Reference
 
-VoiceShield uses **Supabase (PostgreSQL)** with user-partitioned tables for scalability:
-
-| Table | Description |
-|-------|-------------|
-| `profiles` | User accounts (name, email, phone, role) |
-| `trusted_contacts` | Per-user trusted contact list |
-| `speaker_profiles` | Voice embeddings for speaker verification |
-| `calls` | Call records with risk scores |
-| `call_analysis` | Per-call deepfake, speaker, prosody, and context scores |
-| `alerts` | Security alerts with severity and recommendations |
-
-Each table (except `profiles`) is automatically partitioned per-user via database triggers.
-
----
-
-## 🧠 AI Models
-
-The deepfake detection engine is based on [AASIST](https://arxiv.org/abs/2110.01200) and supports multiple architectures:
-
-| Model | Parameters | EER | min t-DCF |
-|-------|-----------|-----|-----------|
-| **AASIST** | ~300K | 0.83% | 0.0275 |
-| **AASIST-L** | 85,306 | 0.99% | 0.0309 |
-| **RawNet2** | Baseline | — | — |
-| **RawGAT-ST** | Baseline | — | — |
-
-Models are trained on the [ASVspoof 2019 LA dataset](https://www.asvspoof.org/index2019.html). Pre-trained weights can be hosted on Hugging Face.
+| Method | Endpoint | Description | Auth Required |
+|:---:|---|---|:---:|
+| `GET` | `/` | Health check & service ping | No |
+| `GET` | `/health` | Detailed service & model status | No |
+| `POST` | `/api/auth/register` | Register new user account | No |
+| `POST` | `/api/auth/login` | Authenticate user & return JWT | No |
+| `GET` | `/api/calls/` | List authenticated user's call logs | Yes |
+| `POST` | `/api/calls/` | Create call entry & attach risk scores | Yes |
+| `POST` | `/api/analysis/` | Upload audio chunk for deepfake analysis | Yes |
+| `GET` | `/api/users/` | Fetch authenticated profile details | Yes |
+| `GET` | `/api/contacts/` | Retrieve verified trusted contacts | Yes |
+| `POST` | `/api/contacts/` | Enroll trusted contact & voice print | Yes |
 
 ---
 
-## 🛠️ Tech Stack
+## 🗄️ Database Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| **AI/ML** | PyTorch, AASIST, XLM-RoBERTa, Hugging Face Transformers |
-| **Backend** | FastAPI, Uvicorn, Pydantic, Librosa, SoundFile |
-| **Database** | Supabase (PostgreSQL) with partitioned tables |
-| **Frontend** | React 19, Vite, React Router, Recharts, Lucide Icons |
-| **Android** | Kotlin, Jetpack Compose, Material 3, Room, Retrofit, WebRTC |
-| **Auth** | Supabase Auth, Google Sign-In (Android) |
-| **Deployment** | Vercel (frontend), Render (backend) |
+VoiceShield utilizes **Supabase (PostgreSQL)** featuring automatic per-user table partitioning for high-throughput isolation:
+
+| Table | Purpose |
+|---|---|
+| `profiles` | User profiles, phone numbers, security roles, and device tokens. |
+| `trusted_contacts` | Partitioned contact records with verified identity flags. |
+| `speaker_profiles` | Biometric voice embedding vectors (192-d / 512-d). |
+| `calls` | Complete call logs including duration, risk severity, and metadata. |
+| `call_analysis` | Fine-grained scores: deepfake prob, speaker similarity, prosody, and context. |
+| `alerts` | Incident logs with actionable recommendations and notifications. |
 
 ---
 
-## 📂 Deployment
+## 🧠 AI Model Benchmarks
 
-### Frontend (Vercel)
+| Model Architecture | Parameters | EER (Equal Error Rate) | min t-DCF | Primary Use Case |
+|---|:---:|:---:|:---:|---|
+| **AASIST** | ~300K | **0.83%** | **0.0275** | Primary Spectro-Temporal Model |
+| **AASIST-L** | 85K | **0.99%** | **0.0309** | Lightweight High-Throughput Model |
+| **RawNet2** | Baseline | 4.80% | 0.1145 | Raw Waveform Feature Baseline |
+| **RawGAT-ST** | Baseline | 1.06% | 0.0335 | Graph Attention Baseline |
 
-The frontend is configured for Vercel deployment with SPA rewrites:
+*Trained and validated on the [ASVspoof 2019 Logical Access (LA)](https://www.asvspoof.org/index2019.html) dataset.*
 
-```bash
-cd frontend
-npm run build
-# Deploy the dist/ folder to Vercel
-```
+---
 
-### Backend (Render)
+## 🌐 Production Deployments
 
-The backend is deployed on Render at:
-```
-https://voice-shield-backend-7xpl.onrender.com/
-```
+- **Frontend Application**: Hosted on [Vercel](https://vercel.com) with Single Page Application rewrites.
+- **Backend Services**: Hosted on [Render](https://render.com) (`https://voice-shield-backend-7xpl.onrender.com/`).
+- **ML Cloud Inference**: Hosted on [Hugging Face Spaces](https://huggingface.co/spaces) with Gradio endpoints.
 
 ---
 
 ## 🤝 Contributing
 
+Contributions are welcome! Please follow these steps:
+
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a dedicated branch: `git checkout -b feature/voice-enhancement`
+3. Commit your changes: `git commit -m 'feat: add enhanced prosody jitter extraction'`
+4. Push to the branch: `git push origin feature/voice-enhancement`
+5. Submit a descriptive Pull Request
 
 ---
 
 ## 📄 License
 
-The AASIST model code is licensed under the **MIT License** (Copyright © NAVER Corp.).
-
----
-
-## 🙏 Acknowledgements
-
-- [AASIST](https://github.com/clovaai/aasist) — Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks
-- [ASVspoof 2019](https://www.asvspoof.org/) — Large-scale public database for anti-spoofing research
-- [Supabase](https://supabase.com/) — Open-source Firebase alternative
-- [FastAPI](https://fastapi.tiangolo.com/) — Modern Python web framework
-- [Vite](https://vite.dev/) — Next-generation frontend tooling
+The core VoiceShield application is licensed under the [MIT License](LICENSE).  
+The AASIST model architecture and baseline components are subject to NAVER Corp. MIT licensing terms.
 
 ---
 

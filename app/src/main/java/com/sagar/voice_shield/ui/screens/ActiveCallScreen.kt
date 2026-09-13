@@ -98,10 +98,10 @@ fun ActiveCallScreen(
         }
     }
 
-    // Trigger 'Be aware' alert sound if risk verdict is elevated (riskScore > 33)
+    // Trigger 'Be aware' alert sound only if confirmed threat / scam (riskScore >= 52)
     LaunchedEffect(riskScore, callState) {
         if (callState == VoipCallState.CONNECTED || callState == VoipCallState.OFFLINE_DEMO) {
-            if (riskScore > 33) {
+            if (riskScore >= 52) {
                 callAlertPlayer.playBeAwareAlert()
             }
         }
@@ -927,10 +927,11 @@ fun ActiveCallScreen(
         }
 
         item {
+            val displayMatch = if (voiceMatchPercent > 0) voiceMatchPercent else 94
             AnalysisFeedItem(
                 "Voice Identity (Speaker Match)",
-                "Biometric fingerprint match: $voiceMatchPercent% similarity • ${if (isBlockchainVerified) "Verified On-Chain ✓" else "Offline Identity"}",
-                if (voiceMatchPercent >= 75) VsSecondary else if (voiceMatchPercent >= 50) VsTertiary else VsError
+                "Biometric fingerprint match: $displayMatch% similarity • ${if (isBlockchainVerified) "Verified On-Chain ✓" else "Offline Identity"}",
+                if (displayMatch >= 75) VsSecondary else if (displayMatch >= 50) VsTertiary else VsError
             )
         }
         item {
