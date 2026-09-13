@@ -75,6 +75,7 @@ class AppContainer(context: Context) {
     // Repositories
     val authRepository = AuthRepository(api, huggingFaceApi, preferencesManager)
     val analysisRepository = AnalysisRepository(api, callHistoryDao)
+    val voiceIdentityRepository = com.sagar.voice_shield.data.repository.VoiceIdentityRepository(api, preferencesManager)
 
     // ML
     val riskEngine = RiskEngine()
@@ -106,6 +107,18 @@ class AppContainer(context: Context) {
         // Wire WebRTC audio capture directly to AudioCallEngine for real-time AI deepfake analysis
         voipCallManager.webRtcCallManager.onAudioChunkCaptured = { pcmData, sampleRate ->
             audioCallEngine.feedAudioChunk(pcmData, sampleRate)
+        }
+
+        // Wire incoming live VoIP audio stream directly to AudioCallEngine for real-time AI deepfake analysis
+        voipCallManager.audioStreamer.onPeerAudioDecoded = { pcmData, sampleRate ->
+            audioCallEngine.feedAudioChunk(pcmData, sampleRate)
+        }
+
+        // Re-enforce earpiece/speaker audio routing after WebRTC ICE connection establishes
+        // WebRTC creates its own AudioTrack which may override earpiece routing
+        voipCallManager.webRtcCallManager.onIceConnected = {
+            val isSpeaker = voipCallManager.audioStreamer.isSpeakerOn.value
+            voipCallManager.audioStreamer.enforceAudioRouting(isSpeaker)
         }
     }
 }

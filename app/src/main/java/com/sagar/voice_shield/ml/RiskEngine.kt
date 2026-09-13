@@ -14,7 +14,8 @@ class RiskEngine {
         val deepfakeScore: Double = 0.0,
         val speakerSimilarity: Double = 1.0,
         val prosodyScore: Double = 0.0,
-        val contextScore: Double = 0.0
+        val contextScore: Double = 0.0,
+        val threatScore: Double = 0.0
     )
 
     data class RiskResult(
@@ -28,31 +29,39 @@ class RiskEngine {
         val speakerMismatch = 1.0 - bounded(signals.speakerSimilarity)
         val prosody = bounded(signals.prosodyScore)
         val context = bounded(signals.contextScore)
+        val threat = bounded(signals.threatScore)
 
-        val score = (
-            0.40 * deepfake +
-            0.25 * speakerMismatch +
-            0.15 * prosody +
-            0.20 * context
-        ) * 100.0
+        val maxAnomaly = max(deepfake, max(threat, prosody))
 
-        val roundedScore = round(score * 100) / 100
+        // Normal: 12 - 18
+        // Suspicious: 30 - 50, or at most 60
+        val baseScore = when {
+            // Extreme shouting / synthetic attack: 52 to 62
+            maxAnomaly >= 0.70 -> 50.0 + ((maxAnomaly - 0.70) / 0.30) * 12.0
+            // Suspicious / scammer cadence / urgency: scales smoothly 30 to 50!
+            maxAnomaly >= 0.25 -> 30.0 + ((maxAnomaly - 0.25) / 0.45) * 20.0
+            // Normal clean human voice: scales strictly 12 to 18!
+            else -> 12.0 + (maxAnomaly / 0.25) * 6.0
+        }
+
+        val roundedScore = round(baseScore.coerceIn(12.0, 60.0) * 10) / 10
         val severity = severity(roundedScore)
 
         val explanations = mutableListOf<String>()
-        if (deepfake > 0.5) explanations.add("Possible synthetic voice detected (${(deepfake * 100).toInt()}%)")
+        if (threat >= 0.35) explanations.add("⚠️ Scammer threat dynamics: Aggressive urgency / vocal stress (${(threat * 100).toInt()}% threat)")
+        if (deepfake >= 0.45) explanations.add("Possible synthetic voice detected (${(deepfake * 100).toInt()}%)")
         if (speakerMismatch > 0.5) explanations.add("Low speaker similarity (${((1 - speakerMismatch) * 100).toInt()}% match)")
-        if (prosody > 0.5) explanations.add("Unusual speech characteristics detected")
+        if (prosody >= 0.45) explanations.add("Acoustic prosody anomaly: Robotic cadence or vocoder compression")
         if (context > 0.5) explanations.add("Suspicious conversation patterns identified")
-        if (explanations.isEmpty()) explanations.add("No significant risk signals detected")
+        if (explanations.isEmpty()) explanations.add("Natural human voice verified safe")
 
         return RiskResult(roundedScore, severity, explanations)
     }
 
     fun severity(score: Double): String {
         return when {
-            score < 34 -> "LOW"
-            score < 67 -> "MEDIUM"
+            score < 28.0 -> "LOW"
+            score <= 52.0 -> "MEDIUM"
             else -> "HIGH"
         }
     }

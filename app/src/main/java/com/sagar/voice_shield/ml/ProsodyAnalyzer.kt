@@ -14,7 +14,8 @@ class ProsodyAnalyzer {
         val jitter: Double,
         val shimmer: Double,
         val speakingRate: Double,
-        val unnaturalnessScore: Double
+        val unnaturalnessScore: Double,
+        val threatScore: Double = 0.0
     )
 
     fun analyze(audioData: ShortArray, sampleRate: Int = 16000): ProsodyFeatures {
@@ -26,8 +27,8 @@ class ProsodyAnalyzer {
         val jitter = computeJitter(pitchValues)
         val shimmer = computeShimmer(floatData, sampleRate)
         val speakingRate = estimateSpeakingRate(floatData, sampleRate)
-        val unnaturalnessScore = computeUnnaturalness(meanPitch, pitchVariance, jitter, shimmer, speakingRate)
-        return ProsodyFeatures(meanPitch, pitchVariance, jitter, shimmer, speakingRate, unnaturalnessScore)
+        val (unnaturalness, threat) = computeAcousticScores(meanPitch, pitchVariance, jitter, shimmer, speakingRate, floatData)
+        return ProsodyFeatures(meanPitch, pitchVariance, jitter, shimmer, speakingRate, unnaturalness, threat)
     }
 
     private fun extractPitch(data: DoubleArray, sampleRate: Int): List<Double> {
@@ -106,15 +107,65 @@ class ProsodyAnalyzer {
         return if (durationSecs > 0) peaks / durationSecs else 0.0
     }
 
-    private fun computeUnnaturalness(meanPitch: Double, pitchVariance: Double, jitter: Double, shimmer: Double, speakingRate: Double): Double {
-        var score = 0.0
-        if (pitchVariance < 100 && meanPitch > 0) score += 0.3
-        if (jitter < 0.005 && jitter >= 0) score += 0.25
-        if (shimmer < 0.02 && shimmer >= 0) score += 0.2
-        if (speakingRate > 8 || (speakingRate > 0 && speakingRate < 1)) score += 0.15
-        if (meanPitch > 0 && (meanPitch < 70 || meanPitch > 400)) score += 0.1
-        return min(1.0, score)
+    private fun computeAcousticScores(
+        meanPitch: Double,
+        pitchVariance: Double,
+        jitter: Double,
+        shimmer: Double,
+        speakingRate: Double,
+        floatData: DoubleArray
+    ): Pair<Double, Double> {
+        var unnaturalness = 0.0
+        var threat = 0.0
+
+        // 1. Robotic / Synthetic Speech / Text-to-Speech artifacts
+        // Genuine TTS has unnaturally flat pitch (< 35) AND near-zero micro-fluctuation together
+        if (pitchVariance < 35.0 && meanPitch > 80.0 && jitter > 0 && jitter < 0.003 && shimmer < 0.008) {
+            unnaturalness += 0.50
+        }
+        if (speakingRate > 7.5) {
+            unnaturalness += 0.20
+        }
+
+        // 2. Scammer & Social Engineering Threat Dynamics
+        // Peak energy / shouting / loudness (intimidation):
+        val maxAmp = if (floatData.isNotEmpty()) floatData.maxOf { abs(it) } else 0.0
+        if (maxAmp > 0.60) {
+            threat += 0.35
+        } else if (maxAmp > 0.42) {
+            threat += 0.20
+        }
+
+        // Frantic rushed speech cadence (pushing victim to panic):
+        if (speakingRate > 4.8) {
+            threat += 0.30
+        } else if (speakingRate > 3.8) {
+            threat += 0.18
+        }
+
+        // Extreme high pitch / screaming / aggressive vocal strain:
+        if (meanPitch > 250.0) {
+            threat += 0.30
+        } else if (meanPitch > 210.0) {
+            threat += 0.18
+        }
+
+        // Severe pitch volatility (wild erratic screeching):
+        if (pitchVariance > 450.0) {
+            threat += 0.25
+        } else if (pitchVariance > 280.0) {
+            threat += 0.15
+        }
+
+        // Vocal harshness / severe distortion from shouting:
+        if (shimmer > 0.065 && jitter > 0.035) {
+            threat += 0.20
+        } else if (shimmer > 0.050 && jitter > 0.028) {
+            threat += 0.12
+        }
+
+        return Pair(min(1.0, unnaturalness), min(1.0, threat))
     }
 
-    private fun emptyFeatures() = ProsodyFeatures(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    private fun emptyFeatures() = ProsodyFeatures(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 }

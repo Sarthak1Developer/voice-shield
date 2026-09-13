@@ -52,6 +52,10 @@ class HuggingFaceGradioClient(
                     val requestBody = wavBytes.toRequestBody("audio/wav".toMediaTypeOrNull())
                     val part = MultipartBody.Part.createFormData("file", "chunk.wav", requestBody)
                     val backendResp = backendApi.uploadAudio(part)
+                    if (backendResp.riskScore == 82.0 && backendResp.deepfakeScore == 0.78) {
+                        Log.w(TAG, "Backend returned dummy 82.0 exception payload, falling back to local DSP.")
+                        throw IOException("Backend returned dummy 82.0 error response")
+                    }
                     Log.d(TAG, "Render backend fallback succeeded. Risk: ${backendResp.riskScore}, Deepfake: ${backendResp.deepfakeScore}")
                     return@withContext HfAudioAnalysisResponse(
                         status = "success",

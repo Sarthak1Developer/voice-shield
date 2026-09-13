@@ -24,48 +24,22 @@ class WebRtcCallManager(
     @Volatile
     private var isRemoteDescriptionSet = false
 
-    // High-availability STUN + Open Relay TURN servers for seamless cross-network & CGNAT traversal
+    // High-availability global STUN servers for NAT discovery
     private val iceServers = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun3.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer(),
+        PeerConnection.IceServer.builder("stun:turn.matrix.org:3478").createIceServer(),
+        PeerConnection.IceServer.builder("stun:webrtc.free-solutions.org:3478").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun.services.mozilla.com:3478").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun.relay.metered.ca:80").createIceServer(),
-        // Free open TURN relays allowing WebRTC audio across differing networks, cellular LTE/5G & Wi-Fi
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer(),
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80?transport=udp")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer(),
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer(),
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=udp")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer(),
-        PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer(),
-        // Secure TLS TURN relays for strict firewalls, corporate networks & mobile CGNAT
-        PeerConnection.IceServer.builder("turns:openrelay.metered.ca:443?transport=tcp")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer(),
-        PeerConnection.IceServer.builder("turns:openrelay.metered.ca:5349?transport=tcp")
-            .setUsername("openrelayproject")
-            .setPassword("openrelayproject")
-            .createIceServer()
+        PeerConnection.IceServer.builder("stun:stun.relay.metered.ca:80").createIceServer()
     )
 
     var onAudioChunkCaptured: ((pcmData: ByteArray, sampleRate: Int) -> Unit)? = null
+    var onIceConnected: (() -> Unit)? = null
 
     init {
         initPeerConnectionFactory()
@@ -123,8 +97,9 @@ class WebRtcCallManager(
                 Log.d("WEBRTC", "ICE connection state: $state")
                 Log.d(TAG, "IceConnectionState: $state")
                 if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
-                    routeAudioToSpeaker()
                     inspectSelectedCandidatePair()
+                    // Re-enforce earpiece/speaker routing after WebRTC establishes its audio path
+                    onIceConnected?.invoke()
                 }
             }
 
@@ -154,10 +129,8 @@ class WebRtcCallManager(
 
             override fun onAddStream(stream: MediaStream) {
                 Log.d(TAG, "onAddStream with audio tracks: ${stream.audioTracks.size}")
-                if (stream.audioTracks.isNotEmpty()) {
-                    stream.audioTracks[0].setEnabled(true)
-                    routeAudioToSpeaker()
-                }
+                // Enable remote audio tracks for voice playback
+                stream.audioTracks.forEach { it.setEnabled(true) }
             }
 
             override fun onRemoveStream(stream: MediaStream) {}
@@ -171,7 +144,6 @@ class WebRtcCallManager(
                 val track = receiver.track()
                 if (track is AudioTrack) {
                     track.setEnabled(true)
-                    routeAudioToSpeaker()
                 }
             }
 
@@ -180,7 +152,6 @@ class WebRtcCallManager(
                 val track = transceiver.receiver.track()
                 if (track is AudioTrack) {
                     track.setEnabled(true)
-                    routeAudioToSpeaker()
                 }
             }
         }
@@ -208,24 +179,6 @@ class WebRtcCallManager(
         }
 
         return pc
-    }
-
-    private fun routeAudioToSpeaker() {
-        try {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            @Suppress("DEPRECATION")
-            audioManager.isSpeakerphoneOn = true
-            @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(
-                null,
-                AudioManager.STREAM_VOICE_CALL,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
-            )
-            Log.d(TAG, "Audio routed to speakerphone with communication mode")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed setting speakerphone", e)
-        }
     }
 
     private fun inspectSelectedCandidatePair() {
@@ -374,7 +327,6 @@ class WebRtcCallManager(
                 Log.d(TAG, "setRemoteDescription success for answer. WebRTC audio active.")
                 isRemoteDescriptionSet = true
                 drainQueuedCandidates()
-                routeAudioToSpeaker()
             }
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onCreateFailure(s: String?) {}
@@ -422,11 +374,6 @@ class WebRtcCallManager(
             peerConnection?.close()
             peerConnection?.dispose()
             peerConnection = null
-
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioManager.mode = AudioManager.MODE_NORMAL
-            @Suppress("DEPRECATION")
-            audioManager.isSpeakerphoneOn = false
         } catch (e: Exception) {
             Log.w(TAG, "Error cleaning up peer connection", e)
         }

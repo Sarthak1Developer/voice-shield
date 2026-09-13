@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,6 +36,8 @@ import com.sagar.voice_shield.service.FloatingOverlayService
 import com.sagar.voice_shield.ui.theme.*
 import kotlinx.coroutines.launch
 
+import androidx.core.app.NotificationManagerCompat
+
 @Composable
 fun SpeakerProtectionScreen(navController: NavController) {
     val context = LocalContext.current
@@ -44,6 +47,14 @@ fun SpeakerProtectionScreen(navController: NavController) {
 
     val savedProtectionEnabled by preferencesManager.speakerProtectionEnabled.collectAsState(initial = true)
     val isServiceRunning by AudioAnalysisService.isRunning.collectAsState()
+    val isActivelyAnalyzing by AudioAnalysisService.isAnalyzing.collectAsState()
+    val riskScore by AudioAnalysisService.riskScore.collectAsState()
+    val severity by AudioAnalysisService.severity.collectAsState()
+    val explanations by AudioAnalysisService.explanations.collectAsState()
+    val progressSec by AudioAnalysisService.analysisProgressSec.collectAsState()
+    val chunksCount by AudioAnalysisService.chunksProcessedCount.collectAsState()
+    val statusText by AudioAnalysisService.statusText.collectAsState()
+    val is60sCompleted by AudioAnalysisService.is60sCompleted.collectAsState()
 
     var hasMicPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -51,11 +62,15 @@ fun SpeakerProtectionScreen(navController: NavController) {
     var hasOverlayPermission by remember {
         mutableStateOf(Settings.canDrawOverlays(context))
     }
+    var hasNotifPermission by remember {
+        mutableStateOf(NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName))
+    }
 
-    // Periodically re-check overlay permission when user returns to the app
+    // Periodically re-check overlay and notification permissions when user returns to the app
     DisposableEffect(Unit) {
         hasOverlayPermission = Settings.canDrawOverlays(context)
         hasMicPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        hasNotifPermission = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
         onDispose {}
     }
 
@@ -173,6 +188,223 @@ fun SpeakerProtectionScreen(navController: NavController) {
                         uncheckedThumbColor = VsOnSurfaceVariant, uncheckedTrackColor = VsSurfaceContainerHighest
                     )
                 )
+
+                if (isProtectionActive) {
+                    Spacer(Modifier.height(14.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isActivelyAnalyzing) VsErrorContainer.copy(alpha = 0.3f) else VsSecondaryContainer.copy(alpha = 0.25f),
+                        border = BorderStroke(1.dp, if (isActivelyAnalyzing) VsError.copy(alpha = 0.5f) else VsSecondary.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                if (isActivelyAnalyzing) Icons.Filled.Mic else Icons.Filled.PauseCircle,
+                                null,
+                                tint = if (isActivelyAnalyzing) VsError else VsSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                if (isActivelyAnalyzing) "🔴 Actively Analyzing Call" else "⏸ Standby (Auto-detects calls)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isActivelyAnalyzing) VsError else VsSecondary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (!isServiceRunning) {
+                                startProtectionServices()
+                            }
+                            AudioAnalysisService.toggleAnalysis()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (isActivelyAnalyzing) VsError else VsSecondary
+                        ),
+                        border = BorderStroke(1.dp, if (isActivelyAnalyzing) VsError else VsSecondary)
+                    ) {
+                        Text(
+                            if (isActivelyAnalyzing) "Return to Standby" else "Force Test / Start Analysis",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    if (isActivelyAnalyzing || progressSec > 0) {
+                        Spacer(Modifier.height(16.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = VsSurfaceContainerHighest),
+                            border = BorderStroke(
+                                1.dp,
+                                when {
+                                    riskScore >= 52 -> VsError.copy(alpha = 0.8f)
+                                    riskScore >= 28 -> Color(0xFFFFB74D).copy(alpha = 0.8f)
+                                    else -> Color(0xFF4EDEA3).copy(alpha = 0.6f)
+                                }
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            "LIVE RISK SCORE",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = VsOnSurfaceVariant,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Text(
+                                            "$riskScore / 100",
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                riskScore >= 52 -> VsError
+                                                riskScore >= 28 -> Color(0xFFFFB74D)
+                                                else -> Color(0xFF4EDEA3)
+                                            }
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = when {
+                                            riskScore >= 52 -> VsErrorContainer
+                                            riskScore >= 28 -> Color(0xFF3E2723)
+                                            else -> Color(0xFF1B382B)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = when {
+                                                riskScore >= 52 -> "🔴 HIGH RISK"
+                                                riskScore >= 28 -> "🟠 SUSPICIOUS"
+                                                else -> "🟢 SAFE"
+                                            },
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                riskScore >= 52 -> VsOnErrorContainer
+                                                riskScore >= 28 -> Color(0xFFFFB74D)
+                                                else -> Color(0xFF4EDEA3)
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // 60s Analysis Window Progress
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        if (is60sCompleted) "✅ 60s Full Analysis Complete" else "60s Analysis Window",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = VsOnSurfaceVariant
+                                    )
+                                    Text(
+                                        "${progressSec}s / 60s (Chunk $chunksCount)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = VsPrimary
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = (progressSec / 60f).coerceIn(0f, 1f),
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                    color = when {
+                                        riskScore >= 52 -> VsError
+                                        riskScore >= 28 -> Color(0xFFFFB74D)
+                                        else -> Color(0xFF4EDEA3)
+                                    },
+                                    trackColor = VsSurfaceContainerLow
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Text(
+                                    explanations.firstOrNull() ?: "Acoustic monitoring active...",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = when {
+                                        riskScore >= 52 -> VsError
+                                        riskScore >= 28 -> Color(0xFFFFB74D)
+                                        else -> VsOnSurface
+                                    }
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    explanations.getOrNull(1) ?: "Analyzing vocal harmonics and speech cadence.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = VsOnSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Notification Access Warning if not enabled
+        if (!hasNotifPermission) {
+            Spacer(Modifier.height(14.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = VsSurfaceContainerHighest),
+                border = BorderStroke(1.dp, VsSecondary.copy(alpha = 0.5f))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(Icons.Filled.Warning, null, tint = VsSecondary, modifier = Modifier.size(24.dp))
+                        Text(
+                            "Call Detection Permission",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = VsOnSurface,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "VoiceShield needs Notification Access to auto-detect WhatsApp, Telegram, Google Meet, and phone calls as soon as they ring or connect.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VsOnSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(40.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VsSecondary, contentColor = Color.Black)
+                    ) {
+                        Icon(Icons.Filled.Settings, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Enable Call Detection Access", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
             }
         }
 
