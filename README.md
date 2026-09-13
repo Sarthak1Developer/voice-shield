@@ -42,41 +42,50 @@ By coupling ultra-low-latency on-device Digital Signal Processing (DSP) prosody 
 
 ---
 
-## 🏗️ Architecture & Data Flow
+## 🔄 Normal Workflow
+
+Here is how VoiceShield protects users during phone calls step-by-step:
 
 ```mermaid
-flowchart TD
-    subgraph Client ["📱 Android Client (Kotlin / Jetpack Compose)"]
-        AudioRecord["Mic / In-Call Stream (16kHz PCM)"]
-        DSP["ProsodyAnalyzer (DSP / FFT)<br/>• Pitch Variance & Jitter<br/>• Shimmer & Speaking Rate<br/>• Threat & Urgency Dynamics"]
-        Overlay["FloatingOverlayService<br/>(System Alert Window)"]
-        UI["Shield Hub & Active Call UI<br/>(60s Progressive Gauge)"]
-        AudioRecord --> DSP
-        DSP --> UI
-        DSP --> Overlay
-    end
-
-    subgraph CloudML ["🧠 Cloud & Backend Inference Layer"]
-        HF["Hugging Face Gradio Space<br/>(AASIST Audio Classifier)"]
-        FastAPI["FastAPI Backend Service<br/>(Render Deployment)"]
-        RiskEngine["Multimodal Risk Engine<br/>• Deepfake Probability (40%)<br/>• Speaker Biometrics (25%)<br/>• Prosody & Threat (15%)<br/>• Context Signals (20%)"]
-        
-        DSP -.->|"WAV Chunks"| HF
-        HF -.->|"Fallback"| FastAPI
-        HF --> RiskEngine
-        FastAPI --> RiskEngine
-    end
-
-    subgraph DataStore ["🗄️ Storage & Management"]
-        Supabase[("Supabase PostgreSQL<br/>• Partitioned Call Logs<br/>• Biometric Embeddings<br/>• Trusted Contacts")]
-        ReactDash["🌐 React 19 Dashboard<br/>(Vite / Vercel)"]
-        FastAPI <--> Supabase
-        Supabase <--> ReactDash
-    end
-
-    RiskEngine -->|"Live Telemetry & Alerts"| UI
-    RiskEngine -->|"Risk Badges"| Overlay
+flowchart LR
+    A["📞 1. Call Starts"] --> B["🎙️ 2. Audio Capture"]
+    B --> C["⚡ 3. On-Device DSP"]
+    C --> D["🧠 4. Deepfake AI"]
+    D --> E["⚖️ 5. Risk Scoring"]
+    E --> F["🛡️ 6. Live Alerts & Overlay"]
 ```
+
+### 1. Call Initiation & Background Monitoring
+- A regular phone call or VoIP call is started.
+- VoiceShield activates its lightweight foreground monitoring service (`AudioAnalysisService`) and displays the **Floating Protection Bubble** over the call screen.
+
+### 2. Audio Streaming & Chunking
+- Incoming call audio is streamed in non-blocking 16 kHz PCM audio chunks (~3–4 seconds each).
+- The capture pipeline operates in-memory with zero unencrypted disk storage.
+
+### 3. Instant On-Device DSP Analysis
+- Before waiting for cloud processing, the on-device `ProsodyAnalyzer` extracts key vocal traits with sub-second latency:
+  - **Pitch Variance & Jitter**: Detects robotic flat pitch ($\sigma < 35\text{ Hz}$) or micro-frequency instability.
+  - **Vocal Shimmer & Distortion**: Catches vocoder synthesis artifacts.
+  - **Urgency & Threat Dynamics**: Monitors speaking rate ($> 4.8\text{ syll/sec}$) and amplitude spikes to detect scammer pressure and acoustic intimidation.
+
+### 4. Deepfake Model Inference
+- Audio chunks are submitted to the **AASIST** spectro-temporal graph attention network (via Hugging Face Gradio API or backend server).
+- The neural network classifies the audio as **Bonafide** (authentic human) or **Spoofed** (synthetic clone, text-to-speech, or voice conversion).
+
+### 5. Multimodal Risk Evaluation
+- The **Risk Engine** combines all signals into a unified risk score ($12\text{--}100$):
+  - **Deepfake Probability** ($40\%$)
+  - **Speaker Biometric Verification** ($25\%$) — Compares against enrolled trusted contacts.
+  - **Prosody & Threat Dynamics** ($15\%$) — Local acoustic urgency and synthetic artifacts.
+  - **Conversation Context** ($20\%$) — Linguistic scam indicators.
+- Calibrated scoring keeps authentic human voice in the nominal safe band ($12\text{--}18\%$), flags suspicious scam pressure at $28\text{--}50\%$, and triggers critical warnings at $52\text{--}100\%$.
+
+### 6. Live User Feedback & Threat Mitigation
+- **Floating Call Overlay**: Displays the live score, current status (Safe, Suspicious, or High Risk), and color-coded badge over any calling app.
+- **60-Second Progressive Verification**: Progresses continuously over a 60-second window, awarding a verified safe badge once cleared.
+- **High-Risk Alerts**: If synthetic voice or fraud patterns are identified, VoiceShield dispatches instant high-priority notifications with actionable guidance (e.g., hang up, do not transfer funds).
+- **Web Dashboard Sync**: Call telemetry and threat scores sync with Supabase for post-call audit and analytics.
 
 ---
 
